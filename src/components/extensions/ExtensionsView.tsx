@@ -18,10 +18,14 @@ import {
   Trash2, 
   Edit,
   FolderOpen,
-  Power
+  Power,
+  Upload,
+  FileArchive,
+  Folder
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { isElectron, getElectronAPI } from '@/lib/electron';
 
 export function ExtensionsView() {
   const { extensions, addExtension, updateExtension, deleteExtension } = useAppStore();
@@ -33,6 +37,8 @@ export function ExtensionsView() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [path, setPath] = useState('');
+
+  const electronAPI = getElectronAPI();
 
   const filteredExtensions = extensions.filter(e =>
     e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -62,13 +68,56 @@ export function ExtensionsView() {
     setPath('');
   };
 
+  const handleSelectFolder = async () => {
+    if (!isElectron()) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    
+    const folderPath = await electronAPI?.selectExtensionFolder();
+    if (folderPath) {
+      setPath(folderPath);
+      // Auto-fill name from folder name
+      const folderName = folderPath.split(/[/\\]/).pop() || '';
+      if (!name) {
+        setName(folderName);
+      }
+      toast.success('تم اختيار المجلد');
+    }
+  };
+
+  const handleSelectZip = async () => {
+    if (!isElectron()) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    
+    const zipPath = await electronAPI?.selectExtensionZip();
+    if (zipPath) {
+      toast.loading('جاري استخراج الملحق...');
+      const result = await electronAPI?.extractExtensionZip(zipPath);
+      
+      if (result?.success && result.path) {
+        setPath(result.path);
+        // Auto-fill name from zip name
+        const zipName = zipPath.split(/[/\\]/).pop()?.replace(/\.(zip|crx)$/i, '') || '';
+        if (!name) {
+          setName(zipName);
+        }
+        toast.success('تم استخراج الملحق بنجاح');
+      } else {
+        toast.error(result?.error || 'فشل استخراج الملحق');
+      }
+    }
+  };
+
   const handleSubmit = () => {
     if (!name.trim()) {
       toast.error('يرجى إدخال اسم الملحق');
       return;
     }
     if (!path.trim()) {
-      toast.error('يرجى إدخال مسار الملحق');
+      toast.error('يرجى اختيار مسار الملحق');
       return;
     }
 
@@ -100,6 +149,12 @@ export function ExtensionsView() {
     toast.info(ext.enabled ? 'تم تعطيل الملحق' : 'تم تفعيل الملحق');
   };
 
+  const handleOpenFolder = async (folderPath: string) => {
+    if (isElectron()) {
+      await electronAPI?.openFolder(folderPath);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -113,11 +168,35 @@ export function ExtensionsView() {
             إدارة ملحقات Chromium
           </p>
         </div>
-        <Button variant="glow" onClick={() => handleOpen()}>
-          <Plus className="w-4 h-4 ml-2" />
-          إضافة ملحق
-        </Button>
+        <div className="flex gap-2">
+          {isElectron() && (
+            <>
+              <Button variant="outline" onClick={handleSelectZip}>
+                <FileArchive className="w-4 h-4 ml-2" />
+                رفع ZIP
+              </Button>
+              <Button variant="outline" onClick={handleSelectFolder}>
+                <Folder className="w-4 h-4 ml-2" />
+                اختيار مجلد
+              </Button>
+            </>
+          )}
+          <Button variant="glow" onClick={() => handleOpen()}>
+            <Plus className="w-4 h-4 ml-2" />
+            إضافة ملحق
+          </Button>
+        </div>
       </div>
+
+      {/* Web Mode Notice */}
+      {!isElectron() && (
+        <div className="bg-warning/10 border border-warning/20 rounded-lg p-4">
+          <p className="text-warning font-medium">وضع المعاينة</p>
+          <p className="text-sm text-muted-foreground">
+            لإضافة ملحقات حقيقية، قم بتشغيل التطبيق كبرنامج سطح مكتب
+          </p>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative max-w-md">
@@ -146,10 +225,24 @@ export function ExtensionsView() {
             }
           </p>
           {!searchQuery && (
-            <Button variant="glow" onClick={() => handleOpen()}>
-              <Plus className="w-4 h-4 ml-2" />
-              إضافة ملحق
-            </Button>
+            <div className="flex justify-center gap-2">
+              {isElectron() && (
+                <>
+                  <Button variant="outline" onClick={handleSelectZip}>
+                    <FileArchive className="w-4 h-4 ml-2" />
+                    رفع ZIP
+                  </Button>
+                  <Button variant="outline" onClick={handleSelectFolder}>
+                    <Folder className="w-4 h-4 ml-2" />
+                    اختيار مجلد
+                  </Button>
+                </>
+              )}
+              <Button variant="glow" onClick={() => handleOpen()}>
+                <Plus className="w-4 h-4 ml-2" />
+                إضافة يدوي
+              </Button>
+            </div>
           )}
         </div>
       ) : (
@@ -214,10 +307,13 @@ export function ExtensionsView() {
                 </p>
               )}
 
-              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+              <button
+                onClick={() => handleOpenFolder(ext.path)}
+                className="w-full flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 hover:bg-muted transition-colors"
+              >
                 <FolderOpen className="w-3 h-3" />
                 <span className="truncate" dir="ltr">{ext.path}</span>
-              </div>
+              </button>
             </div>
           ))}
         </div>
@@ -234,6 +330,28 @@ export function ExtensionsView() {
           </DialogHeader>
 
           <div className="space-y-4 mt-4">
+            {/* Quick Add Buttons */}
+            {!editExtension && isElectron() && (
+              <div className="grid grid-cols-2 gap-3">
+                <Button 
+                  variant="outline" 
+                  onClick={handleSelectZip}
+                  className="h-20 flex-col gap-2"
+                >
+                  <FileArchive className="w-6 h-6 text-primary" />
+                  <span>رفع ملف ZIP/CRX</span>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleSelectFolder}
+                  className="h-20 flex-col gap-2"
+                >
+                  <Folder className="w-6 h-6 text-primary" />
+                  <span>اختيار مجلد</span>
+                </Button>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="extName">اسم الملحق</Label>
               <Input
@@ -247,16 +365,23 @@ export function ExtensionsView() {
 
             <div className="space-y-2">
               <Label htmlFor="extPath">مسار الملحق</Label>
-              <Input
-                id="extPath"
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder="C:\Extensions\ublock"
-                className="bg-input"
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="extPath"
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder="C:\Extensions\ublock"
+                  className="bg-input flex-1"
+                  dir="ltr"
+                />
+                {isElectron() && (
+                  <Button variant="outline" onClick={handleSelectFolder}>
+                    <FolderOpen className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
-                مسار مجلد الملحق على جهازك
+                مسار مجلد الملحق المستخرج على جهازك
               </p>
             </div>
 

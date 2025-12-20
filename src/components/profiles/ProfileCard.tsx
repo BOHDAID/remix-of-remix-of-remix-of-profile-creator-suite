@@ -8,10 +8,13 @@ import {
   Edit, 
   Globe,
   Shield,
-  Puzzle
+  Puzzle,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isElectron, getElectronAPI } from '@/lib/electron';
+import { useState } from 'react';
 
 interface ProfileCardProps {
   profile: Profile;
@@ -19,16 +22,53 @@ interface ProfileCardProps {
 }
 
 export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
-  const { updateProfile, deleteProfile, extensions } = useAppStore();
+  const { updateProfile, deleteProfile, extensions, settings } = useAppStore();
+  const [launching, setLaunching] = useState(false);
+  const electronAPI = getElectronAPI();
 
-  const handleStart = () => {
-    updateProfile(profile.id, { status: 'running' });
-    toast.success(`تم تشغيل البروفايل: ${profile.name}`);
+  const handleStart = async () => {
+    if (!isElectron()) {
+      toast.error('تشغيل المتصفح متاح فقط في تطبيق سطح المكتب');
+      return;
+    }
+
+    if (!settings.chromiumPath) {
+      toast.error('يرجى تحديد مسار Chromium في الإعدادات أولاً');
+      return;
+    }
+
+    setLaunching(true);
+
+    try {
+      // Get extension paths for this profile
+      const profileExtensions = extensions
+        .filter(e => profile.extensions.includes(e.id) && e.enabled)
+        .map(e => e.path);
+
+      const result = await electronAPI?.launchProfile({
+        chromiumPath: settings.chromiumPath,
+        proxy: profile.proxy,
+        extensions: profileExtensions,
+        userAgent: profile.userAgent || settings.defaultUserAgent,
+        profileId: profile.id
+      });
+
+      if (result?.success) {
+        updateProfile(profile.id, { status: 'running' });
+        toast.success(`تم تشغيل البروفايل: ${profile.name}`);
+      } else {
+        toast.error(result?.error || 'فشل تشغيل المتصفح');
+      }
+    } catch (error) {
+      toast.error('حدث خطأ أثناء تشغيل المتصفح');
+    } finally {
+      setLaunching(false);
+    }
   };
 
   const handleStop = () => {
     updateProfile(profile.id, { status: 'stopped' });
-    toast.info(`تم إيقاف البروفايل: ${profile.name}`);
+    toast.info(`تم تحديث حالة البروفايل: ${profile.name}`);
   };
 
   const handleDelete = () => {
@@ -158,9 +198,14 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
             onClick={handleStart}
             variant="glow"
             className="flex-1"
+            disabled={launching}
           >
-            <Play className="w-4 h-4 ml-2" />
-            تشغيل
+            {launching ? (
+              <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4 ml-2" />
+            )}
+            {launching ? 'جاري التشغيل...' : 'تشغيل'}
           </Button>
         )}
       </div>
