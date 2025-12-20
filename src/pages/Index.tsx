@@ -1,14 +1,42 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { Sidebar } from '@/components/layout/Sidebar';
+import { ProfilesView } from '@/components/profiles/ProfilesView';
+import { ExtensionsView } from '@/components/extensions/ExtensionsView';
+import { SettingsView } from '@/components/settings/SettingsView';
+import { LicenseView } from '@/components/license/LicenseView';
+import { useAppStore } from '@/stores/appStore';
+import { Helmet } from 'react-helmet-async';
 
-const Index = () => {
+export default function Index() {
+  const { activeView } = useAppStore();
+
+  const renderView = () => {
+    switch (activeView) {
+      case 'profiles':
+        return <ProfilesView />;
+      case 'extensions':
+        return <ExtensionsView />;
+      case 'settings':
+        return <SettingsView />;
+      case 'license':
+        return <LicenseView />;
+      default:
+        return <ProfilesView />;
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <>
+      <Helmet>
+        <title>Browser Manager - إدارة المتصفحات</title>
+        <meta name="description" content="تطبيق إدارة بروفايلات المتصفح مع دعم البروكسي والملحقات" />
+      </Helmet>
+      
+      <div className="flex min-h-screen bg-background">
+        <Sidebar />
+        <main className="flex-1 overflow-auto scrollbar-thin">
+          {renderView()}
+        </main>
       </div>
-    </div>
+    </>
   );
-};
-
-export default Index;
+}
