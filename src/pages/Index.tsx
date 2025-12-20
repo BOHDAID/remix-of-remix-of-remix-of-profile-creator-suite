@@ -1,10 +1,12 @@
 import { Sidebar } from '@/components/layout/Sidebar';
+import { TitleBar } from '@/components/layout/TitleBar';
 import { ProfilesView } from '@/components/profiles/ProfilesView';
 import { ExtensionsView } from '@/components/extensions/ExtensionsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { LicenseView } from '@/components/license/LicenseView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
+import { isElectron } from '@/lib/electron';
 
 export default function Index() {
   const { activeView } = useAppStore();
@@ -31,11 +33,14 @@ export default function Index() {
         <meta name="description" content="تطبيق إدارة بروفايلات المتصفح مع دعم البروكسي والملحقات" />
       </Helmet>
       
-      <div className="flex min-h-screen bg-background">
-        <Sidebar />
-        <main className="flex-1 overflow-auto scrollbar-thin">
-          {renderView()}
-        </main>
+      <div className="flex flex-col min-h-screen bg-background">
+        {isElectron() && <TitleBar />}
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-auto scrollbar-thin">
+            {renderView()}
+          </main>
+        </div>
       </div>
     </>
   );
