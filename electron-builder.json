@@ -3,7 +3,7 @@
   "productName": "Browser Manager",
   "electronVersion": "33.0.0",
   "extraMetadata": {
-    "main": "electron/main.js"
+    "main": "electron/main.cjs"
   },
   "directories": {
     "output": "release"
