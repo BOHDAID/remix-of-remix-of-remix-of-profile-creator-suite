@@ -9,12 +9,14 @@ import {
   Globe,
   Shield,
   Puzzle,
-  Loader2
+  Loader2,
+  Lock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isElectron, getElectronAPI } from '@/lib/electron';
 import { useState } from 'react';
+import { checkLicenseStatus } from '@/lib/licenseUtils';
 
 interface ProfileCardProps {
   profile: Profile;
@@ -22,11 +24,25 @@ interface ProfileCardProps {
 }
 
 export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
-  const { updateProfile, deleteProfile, extensions, settings } = useAppStore();
+  const { updateProfile, deleteProfile, extensions, settings, license, profiles, setActiveView } = useAppStore();
   const [launching, setLaunching] = useState(false);
   const electronAPI = getElectronAPI();
 
+  // التحقق من حالة الترخيص
+  const licenseCheck = checkLicenseStatus(license, profiles.length);
+
   const handleStart = async () => {
+    // التحقق من الترخيص أولاً
+    if (!licenseCheck.canRun) {
+      toast.error(licenseCheck.message, {
+        action: {
+          label: 'تفعيل الترخيص',
+          onClick: () => setActiveView('license'),
+        },
+      });
+      return;
+    }
+
     if (!isElectron()) {
       toast.error('تشغيل المتصفح متاح فقط في تطبيق سطح المكتب');
       return;
@@ -210,16 +226,21 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
         ) : (
           <Button
             onClick={handleStart}
-            variant="glow"
-            className="flex-1"
+            variant={licenseCheck.canRun ? "glow" : "outline"}
+            className={cn(
+              "flex-1",
+              !licenseCheck.canRun && "border-warning/50 text-warning hover:bg-warning/10"
+            )}
             disabled={launching}
           >
             {launching ? (
               <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+            ) : !licenseCheck.canRun ? (
+              <Lock className="w-4 h-4 ml-2" />
             ) : (
               <Play className="w-4 h-4 ml-2" />
             )}
-            {launching ? 'جاري التشغيل...' : 'تشغيل'}
+            {launching ? 'جاري التشغيل...' : !licenseCheck.canRun ? 'جدد اشتراكك' : 'تشغيل'}
           </Button>
         )}
       </div>
