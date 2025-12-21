@@ -27,9 +27,16 @@ function createWindow() {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load the built files from the app directory
-    const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
-    mainWindow.loadFile(indexPath);
+    // In production, load the built files
+    // When packaged, app.getAppPath() returns the asar path
+    const appPath = app.getAppPath();
+    const indexPath = path.join(appPath, 'dist', 'index.html');
+    
+    mainWindow.loadFile(indexPath).catch((err) => {
+      console.error('Failed to load index.html:', err);
+      console.error('Tried path:', indexPath);
+      console.error('App path:', appPath);
+    });
   }
 
   mainWindow.on('closed', () => {
