@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { isElectron } from "@/lib/electron";
+import { UpdateNotification } from "@/components/updates/UpdateNotification";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
@@ -24,6 +25,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner position="top-center" richColors />
+        <UpdateNotification />
         <AppRouter>
           <Routes>
             <Route path="/" element={<Index />} />
