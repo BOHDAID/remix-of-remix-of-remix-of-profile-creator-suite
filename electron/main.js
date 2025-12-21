@@ -23,7 +23,8 @@ function createWindow() {
 
   // In development, load from Vite dev server
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173');
+    const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:8080';
+    mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the built files
