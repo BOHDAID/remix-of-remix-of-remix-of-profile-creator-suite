@@ -12,6 +12,11 @@
     "dist/**/*",
     "electron/**/*"
   ],
+  "publish": {
+    "provider": "github",
+    "owner": "BOHDAID",
+    "repo": "profile-creator-suite"
+  },
   "win": {
     "target": [
       {

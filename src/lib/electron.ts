@@ -18,6 +18,13 @@ export interface ElectronAPI {
   openFolder: (folderPath: string) => Promise<boolean>;
   extractExtensionZip: (zipPath: string) => Promise<ExtractResult>;
   
+  // Auto-updater
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void;
+  onUpdateProgress: (callback: (progress: UpdateProgress) => void) => void;
+  onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => void;
+  installUpdate: () => Promise<void>;
+  checkForUpdates: () => Promise<CheckUpdateResult>;
+  
   // Platform info
   platform: string;
   isElectron: boolean;
@@ -50,6 +57,25 @@ export interface AppPaths {
 export interface ExtractResult {
   success: boolean;
   path?: string;
+  error?: string;
+}
+
+export interface UpdateInfo {
+  version: string;
+  releaseDate?: string;
+  releaseNotes?: string;
+}
+
+export interface UpdateProgress {
+  percent: number;
+  bytesPerSecond: number;
+  total: number;
+  transferred: number;
+}
+
+export interface CheckUpdateResult {
+  success: boolean;
+  updateInfo?: UpdateInfo;
   error?: string;
 }
 
