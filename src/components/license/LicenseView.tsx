@@ -4,18 +4,19 @@ import { LicenseInfo } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  Key, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Key,
+  CheckCircle2,
+  XCircle,
   AlertCircle,
   Crown,
   Zap,
   Shield,
-  Users
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { clearPersistedLicense } from '@/lib/persistStorage';
 
 const LICENSE_TIERS = [
   {
@@ -64,14 +65,14 @@ export function LicenseView() {
     }
 
     setLoading(true);
-    
+
     // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     try {
       // Decode the license key (Base64 encoded JSON)
       const decoded = JSON.parse(atob(licenseKey.trim()));
-      
+
       // Validate license structure
       if (!decoded.k || !decoded.t || decoded.m === undefined) {
         throw new Error('Invalid license format');
@@ -98,11 +99,13 @@ export function LicenseView() {
     } catch (error) {
       toast.error('كود الترخيص غير صالح');
     }
-    
+
     setLoading(false);
   };
 
   const deactivateLicense = () => {
+    // ضمان حذف الترخيص من التخزين المحلي (حتى لو تعلّق التخزين المؤقت)
+    clearPersistedLicense();
     setLicense(null);
     toast.info('تم إلغاء تفعيل الترخيص');
   };
