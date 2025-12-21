@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مولد التراخيص - Profile Suite</title>
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #16161f;
+      --bg-input: #1a1a24;
+      --border: #2a2a3a;
+      --primary: #6366f1;
+      --primary-glow: #818cf8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #ffffff;
+      --text-muted: #9ca3af;
+      --radius: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding: 2rem;
+      background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--primary-glow), var(--primary));
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--text), var(--primary-glow));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header p {
+      color: var(--text-muted);
+    }
+
+    /* Grid Layout */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-title svg {
+      width: 24px;
+      height: 24px;
+      color: var(--primary);
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    select {
+      cursor: pointer;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-glow));
+      color: white;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+    }
+
+    .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      opacity: 0.9;
+    }
+
+    .btn-full {
+      width: 100%;
+    }
+
+    /* License Result */
+    .license-result {
+      background: var(--bg-secondary);
+      border: 2px solid var(--success);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    .license-result.show {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .license-code {
+      background: var(--bg-input);
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      margin: 1rem 0;
+      border: 1px solid var(--border);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .license-info {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .license-info-item {
+      background: var(--bg-input);
+      padding: 0.75rem;
+      border-radius: 8px;
+    }
+
+    .license-info-item span:first-child {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .license-info-item span:last-child {
+      display: block;
+      font-weight: 600;
+      margin-top: 0.25rem;
+    }
+
+    /* Licenses List */
+    .licenses-list {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .license-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .license-item:hover {
+      border-color: var(--primary);
+    }
+
+    .license-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .license-item-name {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    .license-item-type {
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .type-trial { background: var(--warning); color: #000; }
+    .type-basic { background: #3b82f6; color: #fff; }
+    .type-pro { background: var(--primary); color: #fff; }
+    .type-enterprise { background: var(--success); color: #fff; }
+
+    .license-item-details {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .license-item-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .license-item-actions .btn {
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-active { background: var(--success); color: #fff; }
+    .badge-expired { background: var(--danger); color: #fff; }
+
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 600px) {
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .stat-label {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 1rem 2rem;
+      border-radius: var(--radius);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast.success { border-color: var(--success); }
+    .toast.error { border-color: var(--danger); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🔐 مولد التراخيص - Profile Suite</h1>
+      <p>أنشئ وأدِر تراخيص العملاء بسهولة</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats" id="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="totalLicenses">0</div>
+        <div class="stat-label">إجمالي التراخيص</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="activeLicenses">0</div>
+        <div class="stat-label">التراخيص الفعالة</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="expiredLicenses">0</div>
+        <div class="stat-label">التراخيص المنتهية</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="todayLicenses">0</div>
+        <div class="stat-label">تراخيص اليوم</div>
+      </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid">
+      <!-- Create License Form -->
+      <div class="card">
+        <h2 class="card-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          إنشاء ترخيص جديد
+        </h2>
+
+        <form id="licenseForm">
+          <div class="form-group">
+            <label for="clientName">اسم العميل *</label>
+            <input type="text" id="clientName" required placeholder="أدخل اسم العميل">
+          </div>
+
+          <div class="form-group">
+            <label for="clientEmail">البريد الإلكتروني (اختياري)</label>
+            <input type="email" id="clientEmail" placeholder="email@example.com" dir="ltr">
+          </div>
+
+          <div class="form-group">
+            <label for="licenseType">نوع الترخيص</label>
+            <select id="licenseType">
+              <option value="trial">تجريبي - Trial (7 أيام، 5 بروفايلات)</option>
+              <option value="basic">أساسي - Basic (30 يوم، 20 بروفايل)</option>
+              <option value="pro" selected>احترافي - Pro (365 يوم، 100 بروفايل)</option>
+              <option value="enterprise">مؤسسي - Enterprise (730 يوم، 999 بروفايل)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="maxProfiles">عدد البروفايلات المسموح</label>
+            <input type="number" id="maxProfiles" min="1" max="9999" placeholder="اتركه فارغ للافتراضي">
+          </div>
+
+          <div class="form-group">
+            <label for="durationDays">مدة الترخيص (بالأيام)</label>
+            <input type="number" id="durationDays" min="1" max="3650" placeholder="اتركه فارغ للافتراضي">
+          </div>
+
+          <div class="form-group">
+            <label for="notes">ملاحظات</label>
+            <textarea id="notes" rows="2" placeholder="ملاحظات إضافية..."></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-full">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            إنشاء الترخيص
+          </button>
+        </form>
+
+        <!-- License Result -->
+        <div class="license-result" id="licenseResult">
+          <h3 style="color: var(--success); margin-bottom: 1rem;">✅ تم إنشاء الترخيص بنجاح!</h3>
+          
+          <div class="license-info" id="licenseInfo"></div>
+          
+          <label>كود الترخيص:</label>
+          <div class="license-code" id="licenseCode"></div>
+          
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-primary" onclick="copyLicenseCode()" style="flex: 1;">
+              📋 نسخ الكود
+            </button>
+            <button class="btn btn-secondary" onclick="resetForm()" style="flex: 1;">
+              ➕ ترخيص جديد
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Licenses List -->
+      <div class="card">
+        <h2 class="card-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          التراخيص المُنشأة
+        </h2>
+
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+          <input type="text" id="searchLicenses" placeholder="🔍 البحث..." style="flex: 1;">
+          <button class="btn btn-secondary" onclick="exportLicenses()">📤 تصدير</button>
+          <label class="btn btn-secondary" style="cursor: pointer;">
+            📥 استيراد
+            <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importLicenses(event)">
+          </label>
+        </div>
+
+        <div class="licenses-list" id="licensesList">
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p>لا توجد تراخيص بعد</p>
+            <p style="font-size: 0.9rem;">أنشئ ترخيصك الأول من النموذج</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // License types configuration
+    const LICENSE_TYPES = {
+      trial: { name: 'تجريبي', days: 7, profiles: 5 },
+      basic: { name: 'أساسي', days: 30, profiles: 20 },
+      pro: { name: 'احترافي', days: 365, profiles: 100 },
+      enterprise: { name: 'مؤسسي', days: 730, profiles: 999 }
+    };
+
+    let licenses = [];
+    let lastGeneratedCode = '';
+
+    // Load licenses from localStorage
+    function loadLicenses() {
+      const saved = localStorage.getItem('profile-suite-licenses');
+      if (saved) {
+        licenses = JSON.parse(saved);
+      }
+      renderLicenses();
+      updateStats();
+    }
+
+    // Save licenses to localStorage
+    function saveLicenses() {
+      localStorage.setItem('profile-suite-licenses', JSON.stringify(licenses));
+      updateStats();
+    }
+
+    // Generate random key
+    function generateKey() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let key = '';
+      for (let i = 0; i < 16; i++) {
+        if (i > 0 && i % 4 === 0) key += '-';
+        key += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return key;
+    }
+
+    // Create license
+    document.getElementById('licenseForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const clientName = document.getElementById('clientName').value.trim();
+      const clientEmail = document.getElementById('clientEmail').value.trim();
+      const licenseType = document.getElementById('licenseType').value;
+      const customProfiles = document.getElementById('maxProfiles').value;
+      const customDays = document.getElementById('durationDays').value;
+      const notes = document.getElementById('notes').value.trim();
+
+      if (!clientName) {
+        showToast('يرجى إدخال اسم العميل', 'error');
+        return;
+      }
+
+      const typeConfig = LICENSE_TYPES[licenseType];
+      const maxProfiles = customProfiles ? parseInt(customProfiles) : typeConfig.profiles;
+      const days = customDays ? parseInt(customDays) : typeConfig.days;
+
+      const now = new Date();
+      const expiration = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      const key = generateKey();
+
+      // Create license data for encoding
+      const licenseData = {
+        k: key,
+        t: licenseType,
+        m: maxProfiles,
+        e: expiration.toISOString(),
+        c: now.toISOString()
+      };
+
+      const licenseCode = btoa(JSON.stringify(licenseData));
+      lastGeneratedCode = licenseCode;
+
+      // Save license record
+      const license = {
+        id: Date.now().toString(),
+        key: key,
+        code: licenseCode,
+        clientName: clientName,
+        clientEmail: clientEmail,
+        type: licenseType,
+        maxProfiles: maxProfiles,
+        days: days,
+        notes: notes,
+        createdAt: now.toISOString(),
+        expiresAt: expiration.toISOString()
+      };
+
+      licenses.unshift(license);
+      saveLicenses();
+      renderLicenses();
+
+      // Show result
+      document.getElementById('licenseInfo').innerHTML = `
+        <div class="license-info-item">
+          <span>العميل</span>
+          <span>${clientName}</span>
+        </div>
+        <div class="license-info-item">
+          <span>النوع</span>
+          <span>${typeConfig.name}</span>
+        </div>
+        <div class="license-info-item">
+          <span>البروفايلات</span>
+          <span>${maxProfiles}</span>
+        </div>
+        <div class="license-info-item">
+          <span>ينتهي في</span>
+          <span>${expiration.toLocaleDateString('ar-SA')}</span>
+        </div>
+      `;
+      document.getElementById('licenseCode').textContent = licenseCode;
+      document.getElementById('licenseResult').classList.add('show');
+
+      showToast('تم إنشاء الترخيص بنجاح!', 'success');
+    });
+
+    // Copy license code
+    function copyLicenseCode() {
+      navigator.clipboard.writeText(lastGeneratedCode).then(() => {
+        showToast('تم نسخ الكود!', 'success');
+      });
+    }
+
+    // Reset form
+    function resetForm() {
+      document.getElementById('licenseForm').reset();
+      document.getElementById('licenseResult').classList.remove('show');
+    }
+
+    // Render licenses list
+    function renderLicenses() {
+      const container = document.getElementById('licensesList');
+      const searchQuery = document.getElementById('searchLicenses').value.toLowerCase();
+
+      const filtered = licenses.filter(lic => 
+        lic.clientName.toLowerCase().includes(searchQuery) ||
+        lic.clientEmail.toLowerCase().includes(searchQuery) ||
+        lic.key.toLowerCase().includes(searchQuery)
+      );
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p>${searchQuery ? 'لا توجد نتائج' : 'لا توجد تراخيص بعد'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(lic => {
+        const isExpired = new Date() > new Date(lic.expiresAt);
+        const typeConfig = LICENSE_TYPES[lic.type];
+        const expiresDate = new Date(lic.expiresAt).toLocaleDateString('ar-SA');
+        
+        return `
+          <div class="license-item">
+            <div class="license-item-header">
+              <span class="license-item-name">${lic.clientName}</span>
+              <span class="license-item-type type-${lic.type}">${typeConfig.name}</span>
+            </div>
+            <div class="license-item-details">
+              <span class="badge ${isExpired ? 'badge-expired' : 'badge-active'}">
+                ${isExpired ? 'منتهي' : 'فعال'}
+              </span>
+              &nbsp;•&nbsp;
+              ${lic.maxProfiles} بروفايل
+              &nbsp;•&nbsp;
+              ينتهي: ${expiresDate}
+              ${lic.clientEmail ? `&nbsp;•&nbsp; ${lic.clientEmail}` : ''}
+            </div>
+            <div class="license-item-actions">
+              <button class="btn btn-secondary" onclick="copyCode('${lic.id}')">📋 نسخ</button>
+              <button class="btn btn-danger" onclick="deleteLicense('${lic.id}')">🗑️ حذف</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Copy specific license code
+    function copyCode(id) {
+      const license = licenses.find(l => l.id === id);
+      if (license) {
+        navigator.clipboard.writeText(license.code).then(() => {
+          showToast('تم نسخ الكود!', 'success');
+        });
+      }
+    }
+
+    // Delete license
+    function deleteLicense(id) {
+      if (confirm('هل تريد حذف هذا الترخيص؟')) {
+        licenses = licenses.filter(l => l.id !== id);
+        saveLicenses();
+        renderLicenses();
+        showToast('تم حذف الترخيص', 'success');
+      }
+    }
+
+    // Export licenses
+    function exportLicenses() {
+      const data = JSON.stringify(licenses, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `licenses-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('تم تصدير التراخيص', 'success');
+    }
+
+    // Import licenses
+    function importLicenses(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (Array.isArray(imported)) {
+            licenses = [...imported, ...licenses];
+            saveLicenses();
+            renderLicenses();
+            showToast(`تم استيراد ${imported.length} ترخيص`, 'success');
+          }
+        } catch (err) {
+          showToast('خطأ في قراءة الملف', 'error');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    // Update stats
+    function updateStats() {
+      const now = new Date();
+      const today = now.toDateString();
+      
+      const active = licenses.filter(l => new Date(l.expiresAt) > now).length;
+      const expired = licenses.length - active;
+      const todayCount = licenses.filter(l => new Date(l.createdAt).toDateString() === today).length;
+
+      document.getElementById('totalLicenses').textContent = licenses.length;
+      document.getElementById('activeLicenses').textContent = active;
+      document.getElementById('expiredLicenses').textContent = expired;
+      document.getElementById('todayLicenses').textContent = todayCount;
+    }
+
+    // Search handler
+    document.getElementById('searchLicenses').addEventListener('input', renderLicenses);
+
+    // Update defaults based on license type
+    document.getElementById('licenseType').addEventListener('change', function() {
+      const type = this.value;
+      const config = LICENSE_TYPES[type];
+      document.getElementById('maxProfiles').placeholder = `افتراضي: ${config.profiles}`;
+      document.getElementById('durationDays').placeholder = `افتراضي: ${config.days} يوم`;
+    });
+
+    // Show toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast ' + type + ' show';
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // Initialize
+    loadLicenses();
+  </script>
+</body>
+</html>

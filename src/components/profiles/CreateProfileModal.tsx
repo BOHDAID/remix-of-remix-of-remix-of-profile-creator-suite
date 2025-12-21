@@ -30,7 +30,7 @@ interface CreateProfileModalProps {
 }
 
 export function CreateProfileModal({ open, onClose, editProfile }: CreateProfileModalProps) {
-  const { addProfile, updateProfile, extensions, settings } = useAppStore();
+  const { addProfile, updateProfile, extensions, settings, license, profiles } = useAppStore();
   
   const [name, setName] = useState('');
   const [useProxy, setUseProxy] = useState(false);
@@ -79,6 +79,15 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
     if (!name.trim()) {
       toast.error('يرجى إدخال اسم البروفايل');
       return;
+    }
+
+    // Check license limit (only for new profiles)
+    if (!editProfile && license) {
+      const currentCount = profiles.length;
+      if (currentCount >= license.maxProfiles) {
+        toast.error(`لقد وصلت للحد الأقصى من البروفايلات (${license.maxProfiles}). قم بترقية الترخيص للحصول على المزيد.`);
+        return;
+      }
     }
 
     const proxy: ProxySettings | null = useProxy && proxyHost && proxyPort
