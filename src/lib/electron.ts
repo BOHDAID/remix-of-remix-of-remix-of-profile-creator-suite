@@ -12,6 +12,8 @@ export interface ElectronAPI {
   
   // Profile management
   launchProfile: (profileData: LaunchProfileData) => Promise<LaunchResult>;
+  stopProfile: (profileId: string) => Promise<StopResult>;
+  onProfileClosed: (callback: (profileId: string) => void) => void;
   
   // Utilities
   getAppPaths: () => Promise<AppPaths>;
@@ -45,6 +47,11 @@ export interface LaunchProfileData {
 export interface LaunchResult {
   success: boolean;
   pid?: number;
+  error?: string;
+}
+
+export interface StopResult {
+  success: boolean;
   error?: string;
 }
 

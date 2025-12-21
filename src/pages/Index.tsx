@@ -4,6 +4,7 @@ import { ProfilesView } from '@/components/profiles/ProfilesView';
 import { ExtensionsView } from '@/components/extensions/ExtensionsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { LicenseView } from '@/components/license/LicenseView';
+import { UpdatesView } from '@/components/updates/UpdatesView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -21,6 +22,8 @@ export default function Index() {
         return <SettingsView />;
       case 'license':
         return <LicenseView />;
+      case 'updates':
+        return <UpdatesView />;
       default:
         return <ProfilesView />;
     }

@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Profile management
   launchProfile: (profileData) => ipcRenderer.invoke('launch-profile', profileData),
+  stopProfile: (profileId) => ipcRenderer.invoke('stop-profile', profileId),
+  onProfileClosed: (callback) => ipcRenderer.on('profile-closed', (_, profileId) => callback(profileId)),
   
   // Utilities
   getAppPaths: () => ipcRenderer.invoke('get-app-paths'),

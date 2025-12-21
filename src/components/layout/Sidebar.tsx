@@ -4,7 +4,8 @@ import {
   Settings, 
   Key,
   ChevronLeft,
-  Globe
+  Globe,
+  Download
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -16,6 +17,7 @@ const menuItems = [
   { id: 'extensions', label: 'الملحقات', icon: Puzzle },
   { id: 'settings', label: 'الإعدادات', icon: Settings },
   { id: 'license', label: 'الترخيص', icon: Key },
+  { id: 'updates', label: 'التحديثات', icon: Download },
 ] as const;
 
 export function Sidebar() {

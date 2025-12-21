@@ -24,8 +24,8 @@ interface AppState {
   updateSettings: (updates: Partial<AppSettings>) => void;
   
   // UI State
-  activeView: 'profiles' | 'extensions' | 'settings' | 'license';
-  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license') => void;
+  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates';
+  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates') => void;
 }
 
 const defaultSettings: AppSettings = {

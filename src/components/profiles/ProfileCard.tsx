@@ -66,9 +66,23 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
     }
   };
 
-  const handleStop = () => {
-    updateProfile(profile.id, { status: 'stopped' });
-    toast.info(`تم تحديث حالة البروفايل: ${profile.name}`);
+  const handleStop = async () => {
+    if (!isElectron()) {
+      toast.error('إيقاف المتصفح متاح فقط في تطبيق سطح المكتب');
+      return;
+    }
+
+    try {
+      const result = await electronAPI?.stopProfile(profile.id);
+      if (result?.success) {
+        updateProfile(profile.id, { status: 'stopped' });
+        toast.success(`تم إيقاف البروفايل: ${profile.name}`);
+      } else {
+        toast.error(result?.error || 'فشل إيقاف المتصفح');
+      }
+    } catch (error) {
+      toast.error('حدث خطأ أثناء إيقاف المتصفح');
+    }
   };
 
   const handleDelete = () => {
