@@ -5,29 +5,38 @@ import {
   Key,
   ChevronLeft,
   Globe,
-  Download
+  Download,
+  Shield,
+  Database,
+  Network
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
-
-const menuItems = [
-  { id: 'profiles', label: 'البروفايلات', icon: Users },
-  { id: 'extensions', label: 'الملحقات', icon: Puzzle },
-  { id: 'settings', label: 'الإعدادات', icon: Settings },
-  { id: 'license', label: 'الترخيص', icon: Key },
-  { id: 'updates', label: 'التحديثات', icon: Download },
-] as const;
+import { useTranslation } from '@/hooks/useTranslation';
 
 export function Sidebar() {
   const { activeView, setActiveView, profiles, license } = useAppStore();
   const [collapsed, setCollapsed] = useState(false);
+  const { t, isRTL } = useTranslation();
+
+  const menuItems = [
+    { id: 'profiles' as const, label: t('profiles'), icon: Users },
+    { id: 'extensions' as const, label: t('extensions'), icon: Puzzle },
+    { id: 'proxy' as const, label: t('proxyManager'), icon: Network },
+    { id: 'security' as const, label: t('security'), icon: Shield },
+    { id: 'backup' as const, label: t('backup'), icon: Database },
+    { id: 'settings' as const, label: t('settings'), icon: Settings },
+    { id: 'license' as const, label: t('license'), icon: Key },
+    { id: 'updates' as const, label: t('updates'), icon: Download },
+  ];
 
   return (
     <aside
       className={cn(
-        "h-screen bg-sidebar border-l border-sidebar-border flex flex-col transition-all duration-300",
+        "h-screen bg-sidebar border-sidebar-border flex flex-col transition-all duration-300",
+        isRTL ? "border-l" : "border-r",
         collapsed ? "w-20" : "w-64"
       )}
     >
@@ -40,14 +49,16 @@ export function Sidebar() {
           {!collapsed && (
             <div className="animate-fade-in">
               <h1 className="font-bold text-lg gradient-text">Browser Manager</h1>
-              <p className="text-xs text-muted-foreground">إدارة المتصفحات</p>
+              <p className="text-xs text-muted-foreground">
+                {isRTL ? 'إدارة المتصفحات' : 'Profile Manager'}
+              </p>
             </div>
           )}
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto scrollbar-thin">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
@@ -68,7 +79,10 @@ export function Sidebar() {
                 <span className="font-medium animate-fade-in">{item.label}</span>
               )}
               {!collapsed && item.id === 'profiles' && profiles.length > 0 && (
-                <span className="mr-auto bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
+                <span className={cn(
+                  "bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full",
+                  isRTL ? "mr-auto" : "ml-auto"
+                )}>
                   {profiles.length}
                 </span>
               )}
@@ -87,12 +101,16 @@ export function Sidebar() {
         )}>
           {!collapsed ? (
             <div className="animate-fade-in">
-              <p className="text-xs text-muted-foreground">حالة الترخيص</p>
+              <p className="text-xs text-muted-foreground">
+                {isRTL ? 'حالة الترخيص' : 'License Status'}
+              </p>
               <p className={cn(
                 "font-semibold",
                 license?.status === 'active' ? "text-success" : "text-warning"
               )}>
-                {license?.status === 'active' ? 'مفعّل' : 'غير مفعّل'}
+                {license?.status === 'active' 
+                  ? (isRTL ? 'مفعّل' : 'Active') 
+                  : (isRTL ? 'غير مفعّل' : 'Inactive')}
               </p>
             </div>
           ) : (
@@ -114,7 +132,9 @@ export function Sidebar() {
         >
           <ChevronLeft className={cn(
             "w-4 h-4 transition-transform",
-            collapsed && "rotate-180"
+            collapsed && "rotate-180",
+            !isRTL && "rotate-180",
+            !isRTL && collapsed && "rotate-0"
           )} />
         </Button>
       </div>
