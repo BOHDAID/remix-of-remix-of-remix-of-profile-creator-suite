@@ -5,12 +5,30 @@ import { ExtensionsView } from '@/components/extensions/ExtensionsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { LicenseView } from '@/components/license/LicenseView';
 import { UpdatesView } from '@/components/updates/UpdatesView';
+import { SecurityView } from '@/components/security/SecurityView';
+import { ProxyManagerView } from '@/components/proxy/ProxyManagerView';
+import { BackupView } from '@/components/backup/BackupView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useEffect } from 'react';
 
 export default function Index() {
-  const { activeView } = useAppStore();
+  const { activeView, settings } = useAppStore();
+  const { isRTL } = useTranslation();
+
+  // Apply language direction
+  useEffect(() => {
+    document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+    document.body.style.direction = isRTL ? 'rtl' : 'ltr';
+  }, [isRTL]);
+
+  // Apply font size
+  useEffect(() => {
+    const sizes = { small: '14px', medium: '16px', large: '18px', xlarge: '20px' };
+    document.documentElement.style.fontSize = sizes[settings.fontSize] || '16px';
+  }, [settings.fontSize]);
 
   const renderView = () => {
     switch (activeView) {
@@ -24,6 +42,12 @@ export default function Index() {
         return <LicenseView />;
       case 'updates':
         return <UpdatesView />;
+      case 'security':
+        return <SecurityView />;
+      case 'proxy':
+        return <ProxyManagerView />;
+      case 'backup':
+        return <BackupView />;
       default:
         return <ProfilesView />;
     }
@@ -32,13 +56,13 @@ export default function Index() {
   return (
     <>
       <Helmet>
-        <title>Browser Manager - إدارة المتصفحات</title>
-        <meta name="description" content="تطبيق إدارة بروفايلات المتصفح مع دعم البروكسي والملحقات" />
+        <title>Browser Manager - {isRTL ? 'إدارة المتصفحات' : 'Profile Manager'}</title>
+        <meta name="description" content={isRTL ? 'تطبيق إدارة بروفايلات المتصفح مع دعم البروكسي والملحقات' : 'Browser profile manager with proxy and extension support'} />
       </Helmet>
       
       <div className="flex flex-col min-h-screen bg-background">
         {isElectron() && <TitleBar />}
-        <div className="flex flex-1 overflow-hidden">
+        <div className={`flex flex-1 overflow-hidden ${isRTL ? 'flex-row' : 'flex-row-reverse'}`}>
           <Sidebar />
           <main className="flex-1 overflow-auto scrollbar-thin">
             {renderView()}
