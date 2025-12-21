@@ -68,51 +68,37 @@ export function LicenseView() {
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Mock license validation
-    const keyLower = licenseKey.toLowerCase();
-    let newLicense: LicenseInfo | null = null;
+    try {
+      // Decode the license key (Base64 encoded JSON)
+      const decoded = JSON.parse(atob(licenseKey.trim()));
+      
+      // Validate license structure
+      if (!decoded.k || !decoded.t || decoded.m === undefined) {
+        throw new Error('Invalid license format');
+      }
 
-    if (keyLower.includes('pro')) {
-      newLicense = {
-        key: licenseKey,
+      // Check expiration
+      if (decoded.e && new Date(decoded.e) < new Date()) {
+        toast.error('كود الترخيص منتهي الصلاحية');
+        setLoading(false);
+        return;
+      }
+
+      const newLicense: LicenseInfo = {
+        key: decoded.k,
         status: 'active',
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        maxProfiles: 50,
-        type: 'pro',
+        expiresAt: decoded.e ? new Date(decoded.e) : null,
+        maxProfiles: decoded.m,
+        type: decoded.t as LicenseInfo['type'],
       };
-    } else if (keyLower.includes('basic')) {
-      newLicense = {
-        key: licenseKey,
-        status: 'active',
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        maxProfiles: 10,
-        type: 'basic',
-      };
-    } else if (keyLower.includes('enterprise')) {
-      newLicense = {
-        key: licenseKey,
-        status: 'active',
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        maxProfiles: -1,
-        type: 'enterprise',
-      };
-    } else if (keyLower.includes('trial')) {
-      newLicense = {
-        key: licenseKey,
-        status: 'active',
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        maxProfiles: 3,
-        type: 'trial',
-      };
-    } else {
+
+      setLicense(newLicense);
+      setLicenseKey('');
+      toast.success('تم تفعيل الترخيص بنجاح');
+    } catch (error) {
       toast.error('كود الترخيص غير صالح');
-      setLoading(false);
-      return;
     }
-
-    setLicense(newLicense);
-    setLicenseKey('');
-    toast.success('تم تفعيل الترخيص بنجاح');
+    
     setLoading(false);
   };
 
@@ -221,9 +207,6 @@ export function LicenseView() {
                 className="bg-input font-mono"
                 dir="ltr"
               />
-              <p className="text-xs text-muted-foreground">
-                جرب: trial, basic, pro, أو enterprise
-              </p>
             </div>
             <Button 
               variant="glow" 
