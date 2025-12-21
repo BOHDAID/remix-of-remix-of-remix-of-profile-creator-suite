@@ -27,8 +27,9 @@ function createWindow() {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load the built files
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // In production, load the built files from the app directory
+    const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
+    mainWindow.loadFile(indexPath);
   }
 
   mainWindow.on('closed', () => {
