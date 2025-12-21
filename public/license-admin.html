@@ -529,6 +529,31 @@
           </label>
         </div>
 
+        <!-- Revocation URL Section -->
+        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+          <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="var(--warning)">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            رابط ملف التراخيص الملغاة (للتزامن)
+          </label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="revocationUrl" placeholder="https://gist.githubusercontent.com/..." style="flex: 1; font-size: 0.9rem;" dir="ltr">
+            <button class="btn btn-primary" onclick="saveRevocationUrl()" style="padding: 0.5rem 1rem;">💾 حفظ</button>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+            استضف ملف revoked-licenses.json على GitHub Gist وألصق الرابط هنا
+          </p>
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+            <button class="btn btn-secondary" onclick="exportRevokedLicenses()" style="flex: 1; font-size: 0.85rem;">
+              📥 تصدير الملغاة
+            </button>
+            <button class="btn btn-danger" onclick="revokeSelectedLicenses()" style="flex: 1; font-size: 0.85rem;" id="revokeBtn" disabled>
+              🚫 إلغاء المحددة
+            </button>
+          </div>
+        </div>
+
         <div class="licenses-list" id="licensesList">
           <div class="empty-state">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -555,6 +580,8 @@
     };
 
     let licenses = [];
+    let revokedLicenses = [];
+    let selectedLicenses = new Set();
     let lastGeneratedCode = '';
 
     // Load licenses from localStorage
@@ -562,6 +589,14 @@
       const saved = localStorage.getItem('profile-suite-licenses');
       if (saved) {
         licenses = JSON.parse(saved);
+      }
+      const savedRevoked = localStorage.getItem('profile-suite-revoked-licenses');
+      if (savedRevoked) {
+        revokedLicenses = JSON.parse(savedRevoked);
+      }
+      const savedUrl = localStorage.getItem('profile-suite-revocation-url');
+      if (savedUrl) {
+        document.getElementById('revocationUrl').value = savedUrl;
       }
       renderLicenses();
       updateStats();
@@ -571,6 +606,79 @@
     function saveLicenses() {
       localStorage.setItem('profile-suite-licenses', JSON.stringify(licenses));
       updateStats();
+    }
+
+    // Save revoked licenses
+    function saveRevokedLicenses() {
+      localStorage.setItem('profile-suite-revoked-licenses', JSON.stringify(revokedLicenses));
+    }
+
+    // Save revocation URL
+    function saveRevocationUrl() {
+      const url = document.getElementById('revocationUrl').value.trim();
+      localStorage.setItem('profile-suite-revocation-url', url);
+      showToast('تم حفظ رابط التزامن', 'success');
+    }
+
+    // Export revoked licenses as JSON
+    function exportRevokedLicenses() {
+      const data = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        revokedKeys: revokedLicenses.map(r => r.key)
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'revoked-licenses.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('تم تصدير التراخيص الملغاة - ارفع الملف إلى GitHub Gist', 'success');
+    }
+
+    // Revoke selected licenses
+    function revokeSelectedLicenses() {
+      if (selectedLicenses.size === 0) return;
+      
+      if (!confirm(`هل تريد إلغاء ${selectedLicenses.size} ترخيص؟`)) return;
+      
+      selectedLicenses.forEach(id => {
+        const license = licenses.find(l => l.id === id);
+        if (license && !revokedLicenses.find(r => r.key === license.key)) {
+          revokedLicenses.push({
+            key: license.key,
+            revokedAt: new Date().toISOString(),
+            clientName: license.clientName
+          });
+        }
+      });
+      
+      saveRevokedLicenses();
+      selectedLicenses.clear();
+      updateRevokeButton();
+      renderLicenses();
+      showToast('تم إلغاء التراخيص المحددة - قم بتصدير ملف الملغاة وارفعه', 'success');
+    }
+
+    // Toggle license selection
+    function toggleLicenseSelection(id) {
+      if (selectedLicenses.has(id)) {
+        selectedLicenses.delete(id);
+      } else {
+        selectedLicenses.add(id);
+      }
+      updateRevokeButton();
+      renderLicenses();
+    }
+
+    // Update revoke button state
+    function updateRevokeButton() {
+      const btn = document.getElementById('revokeBtn');
+      btn.disabled = selectedLicenses.size === 0;
+      btn.textContent = selectedLicenses.size > 0 
+        ? `🚫 إلغاء المحددة (${selectedLicenses.size})`
+        : '🚫 إلغاء المحددة';
     }
 
     // Generate random key
@@ -702,19 +810,31 @@
 
       container.innerHTML = filtered.map(lic => {
         const isExpired = new Date() > new Date(lic.expiresAt);
+        const isRevoked = revokedLicenses.some(r => r.key === lic.key);
+        const isSelected = selectedLicenses.has(lic.id);
         const typeConfig = LICENSE_TYPES[lic.type];
         const expiresDate = new Date(lic.expiresAt).toLocaleDateString('ar-SA');
         
+        let statusBadge = '';
+        if (isRevoked) {
+          statusBadge = '<span class="badge" style="background: var(--danger); color: #fff;">ملغي</span>';
+        } else if (isExpired) {
+          statusBadge = '<span class="badge badge-expired">منتهي</span>';
+        } else {
+          statusBadge = '<span class="badge badge-active">فعال</span>';
+        }
+        
         return `
-          <div class="license-item">
+          <div class="license-item" style="${isSelected ? 'border-color: var(--primary); background: rgba(99, 102, 241, 0.1);' : ''} ${isRevoked ? 'opacity: 0.6;' : ''}">
             <div class="license-item-header">
-              <span class="license-item-name">${lic.clientName}</span>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" ${isSelected ? 'checked' : ''} ${isRevoked ? 'disabled' : ''} onchange="toggleLicenseSelection('${lic.id}')" style="width: 18px; height: 18px; cursor: pointer;">
+                <span class="license-item-name">${lic.clientName}</span>
+              </label>
               <span class="license-item-type type-${lic.type}">${typeConfig.name}</span>
             </div>
             <div class="license-item-details">
-              <span class="badge ${isExpired ? 'badge-expired' : 'badge-active'}">
-                ${isExpired ? 'منتهي' : 'فعال'}
-              </span>
+              ${statusBadge}
               &nbsp;•&nbsp;
               ${lic.maxProfiles} بروفايل
               &nbsp;•&nbsp;
@@ -723,11 +843,29 @@
             </div>
             <div class="license-item-actions">
               <button class="btn btn-secondary" onclick="copyCode('${lic.id}')">📋 نسخ</button>
+              ${!isRevoked ? `<button class="btn btn-secondary" style="background: var(--warning); color: #000;" onclick="revokeSingleLicense('${lic.id}')">🚫 إلغاء</button>` : ''}
               <button class="btn btn-danger" onclick="deleteLicense('${lic.id}')">🗑️ حذف</button>
             </div>
           </div>
         `;
       }).join('');
+    }
+
+    // Revoke single license
+    function revokeSingleLicense(id) {
+      if (!confirm('هل تريد إلغاء هذا الترخيص؟ لن يعمل في التطبيق بعد التزامن.')) return;
+      
+      const license = licenses.find(l => l.id === id);
+      if (license && !revokedLicenses.find(r => r.key === license.key)) {
+        revokedLicenses.push({
+          key: license.key,
+          revokedAt: new Date().toISOString(),
+          clientName: license.clientName
+        });
+        saveRevokedLicenses();
+        renderLicenses();
+        showToast('تم إلغاء الترخيص - قم بتصدير ملف الملغاة وارفعه', 'success');
+      }
     }
 
     // Copy specific license code
