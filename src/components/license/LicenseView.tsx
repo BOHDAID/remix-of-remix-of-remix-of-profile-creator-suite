@@ -150,7 +150,7 @@ export function LicenseView() {
               </h2>
               <p className="text-sm text-muted-foreground">
                 {license?.status === 'active' 
-                  ? `صالح حتى: ${license.expiresAt?.toLocaleDateString('ar-SA')}`
+                  ? `صالح حتى: ${license.expiresAt ? new Date(license.expiresAt).toLocaleDateString('ar-SA') : 'غير محدد'}`
                   : 'أدخل كود الترخيص للتفعيل'
                 }
               </p>
