@@ -5,6 +5,8 @@ const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
+// Store running browser processes by profile ID
+const runningProfiles = new Map();
 
 // Auto-updater configuration
 autoUpdater.autoDownload = true;
@@ -159,6 +161,11 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     return { success: false, error: 'مسار Chromium غير صحيح' };
   }
 
+  // Check if profile is already running
+  if (runningProfiles.has(profileId)) {
+    return { success: false, error: 'البروفايل يعمل بالفعل' };
+  }
+
   const userDataDir = path.join(app.getPath('userData'), 'profiles', profileId);
   
   // Create profile directory if it doesn't exist
@@ -192,15 +199,52 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
 
   try {
     const browser = spawn(chromiumPath, args, {
-      detached: true,
+      detached: false,
       stdio: 'ignore'
     });
     
-    browser.unref();
+    // Store the process
+    runningProfiles.set(profileId, browser);
+    
+    // Handle process exit
+    browser.on('exit', () => {
+      runningProfiles.delete(profileId);
+      mainWindow?.webContents.send('profile-closed', profileId);
+    });
+    
+    browser.on('error', (err) => {
+      console.error('Browser error:', err);
+      runningProfiles.delete(profileId);
+    });
     
     return { success: true, pid: browser.pid };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+// Stop browser profile
+ipcMain.handle('stop-profile', async (event, profileId) => {
+  const browser = runningProfiles.get(profileId);
+  
+  if (!browser) {
+    return { success: false, error: 'البروفايل غير موجود أو لا يعمل' };
+  }
+  
+  try {
+    // Kill the browser process
+    browser.kill('SIGTERM');
+    runningProfiles.delete(profileId);
+    return { success: true };
+  } catch (error) {
+    // Force kill if SIGTERM fails
+    try {
+      browser.kill('SIGKILL');
+      runningProfiles.delete(profileId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }
 });
 
