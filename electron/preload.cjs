@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
   extractExtensionZip: (zipPath) => ipcRenderer.invoke('extract-extension-zip', zipPath),
   
+  // Auto-updater
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, info) => callback(info)),
+  onUpdateProgress: (callback) => ipcRenderer.on('update-progress', (_, progress) => callback(progress)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, info) => callback(info)),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  
   // Platform info
   platform: process.platform,
   isElectron: true

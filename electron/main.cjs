@@ -2,8 +2,41 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
+
+// Auto-updater configuration
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Auto-updater events
+autoUpdater.on('checking-for-update', () => {
+  console.log('Checking for updates...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available:', info.version);
+  mainWindow?.webContents.send('update-available', info);
+});
+
+autoUpdater.on('update-not-available', () => {
+  console.log('No updates available');
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  console.log(`Download progress: ${progress.percent.toFixed(1)}%`);
+  mainWindow?.webContents.send('update-progress', progress);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Update downloaded:', info.version);
+  mainWindow?.webContents.send('update-downloaded', info);
+});
+
+autoUpdater.on('error', (error) => {
+  console.error('Auto-updater error:', error);
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -37,7 +70,16 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  
+  // Check for updates after app is ready (only in production)
+  if (process.env.NODE_ENV !== 'development') {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates();
+    }, 3000);
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -197,6 +239,20 @@ ipcMain.handle('extract-extension-zip', async (event, zipPath) => {
     zip.extractAllTo(extractPath, true);
     
     return { success: true, path: extractPath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Auto-updater IPC handlers
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, updateInfo: result?.updateInfo };
   } catch (error) {
     return { success: false, error: error.message };
   }
