@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { LicenseInfo } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -13,10 +13,18 @@ import {
   Zap,
   Shield,
   Users,
+  RefreshCw,
+  Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { clearPersistedLicense } from '@/lib/persistStorage';
+import { 
+  checkLicenseRevocation, 
+  getRevocationUrl, 
+  setRevocationUrl,
+  clearRevocationCache 
+} from '@/lib/licenseRevocation';
 
 const LICENSE_TIERS = [
   {
@@ -57,6 +65,43 @@ export function LicenseView() {
   const { license, setLicense, profiles } = useAppStore();
   const [licenseKey, setLicenseKey] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingRevocation, setCheckingRevocation] = useState(false);
+  const [revocationUrl, setRevocationUrlState] = useState(getRevocationUrl() || '');
+
+  // Check license revocation on mount and when license changes
+  useEffect(() => {
+    if (license?.status === 'active' && license.key) {
+      checkRevocationStatus();
+    }
+  }, [license?.key]);
+
+  const checkRevocationStatus = async () => {
+    if (!license?.key) return;
+    
+    setCheckingRevocation(true);
+    try {
+      const isRevoked = await checkLicenseRevocation(license.key);
+      if (isRevoked) {
+        // License has been revoked
+        clearPersistedLicense();
+        setLicense(null);
+        toast.error('تم إلغاء هذا الترخيص من قبل المسؤول');
+      }
+    } catch (error) {
+      console.warn('Failed to check revocation:', error);
+    } finally {
+      setCheckingRevocation(false);
+    }
+  };
+
+  const handleSaveRevocationUrl = () => {
+    setRevocationUrl(revocationUrl.trim());
+    clearRevocationCache();
+    toast.success('تم حفظ رابط التزامن');
+    if (license?.key) {
+      checkRevocationStatus();
+    }
+  };
 
   const activateLicense = async () => {
     if (!licenseKey.trim()) {
@@ -81,6 +126,14 @@ export function LicenseView() {
       // Check expiration
       if (decoded.e && new Date(decoded.e) < new Date()) {
         toast.error('كود الترخيص منتهي الصلاحية');
+        setLoading(false);
+        return;
+      }
+
+      // Check if license is revoked
+      const isRevoked = await checkLicenseRevocation(decoded.k);
+      if (isRevoked) {
+        toast.error('هذا الترخيص تم إلغاؤه ولا يمكن استخدامه');
         setLoading(false);
         return;
       }
@@ -186,14 +239,54 @@ export function LicenseView() {
           )}
 
           {license?.status === 'active' && (
-            <Button 
-              variant="outline" 
-              onClick={deactivateLicense}
-              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
-            >
-              إلغاء التفعيل
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={checkRevocationStatus}
+                disabled={checkingRevocation}
+                className="flex-1"
+              >
+                <RefreshCw className={cn("w-4 h-4 ml-2", checkingRevocation && "animate-spin")} />
+                {checkingRevocation ? 'جاري التحقق...' : 'التحقق من صلاحية الترخيص'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={deactivateLicense}
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+              >
+                إلغاء التفعيل
+              </Button>
+            </div>
           )}
+        </div>
+
+        {/* Revocation URL Settings */}
+        <div className="glass-card rounded-xl p-6 space-y-4">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Link2 className="w-5 h-5 text-primary" />
+            إعدادات التزامن
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            أدخل رابط ملف التراخيص الملغاة للتحقق التلقائي
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="revocationUrl">رابط ملف JSON</Label>
+            <Input
+              id="revocationUrl"
+              value={revocationUrl}
+              onChange={(e) => setRevocationUrlState(e.target.value)}
+              placeholder="https://gist.githubusercontent.com/..."
+              className="bg-input font-mono text-sm"
+              dir="ltr"
+            />
+          </div>
+          <Button 
+            variant="secondary" 
+            onClick={handleSaveRevocationUrl}
+            className="w-full"
+          >
+            حفظ رابط التزامن
+          </Button>
         </div>
 
         {/* Activate License */}
