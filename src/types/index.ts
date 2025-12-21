@@ -11,6 +11,7 @@ export interface Profile {
   color?: string;
   group?: string;
   antiTracking?: AntiTrackingSettings;
+  fingerprint?: FingerprintSettings;
 }
 
 export interface ProxySettings {
@@ -123,4 +124,35 @@ export interface AntiTrackingSettings {
   timezoneSpoof: boolean;
   languageSpoof: boolean;
   screenResolutionSpoof: boolean;
+}
+
+export interface FingerprintSettings {
+  // Hardware
+  gpu: string;
+  gpuVendor: string;
+  cpu: string;
+  cpuCores: number;
+  deviceMemory: number; // GB
+  
+  // Screen
+  screenWidth: number;
+  screenHeight: number;
+  colorDepth: number;
+  pixelRatio: number;
+  
+  // Locale
+  timezone: string;
+  language: string;
+  languages: string[];
+  
+  // Platform
+  platform: string;
+  hardwareConcurrency: number;
+  
+  // WebGL
+  webglVendor: string;
+  webglRenderer: string;
+  
+  // Random
+  randomize: boolean;
 }

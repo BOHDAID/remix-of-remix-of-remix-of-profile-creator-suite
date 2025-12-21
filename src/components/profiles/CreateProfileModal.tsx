@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Profile, ProxySettings } from '@/types';
+import { Profile, ProxySettings, FingerprintSettings } from '@/types';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,8 +21,9 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Globe, Shield, Puzzle, FileText, AlertTriangle } from 'lucide-react';
+import { Globe, Shield, Puzzle, FileText, AlertTriangle, Fingerprint } from 'lucide-react';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
+import { FingerprintTab } from './FingerprintTab';
 
 interface CreateProfileModalProps {
   open: boolean;
@@ -46,6 +47,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
   const [selectedExtensions, setSelectedExtensions] = useState<string[]>([]);
   const [userAgent, setUserAgent] = useState('');
   const [notes, setNotes] = useState('');
+  const [fingerprint, setFingerprint] = useState<FingerprintSettings | undefined>(undefined);
 
   useEffect(() => {
     if (editProfile) {
@@ -61,6 +63,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
       setSelectedExtensions(editProfile.extensions);
       setUserAgent(editProfile.userAgent);
       setNotes(editProfile.notes);
+      setFingerprint(editProfile.fingerprint);
     } else {
       resetForm();
     }
@@ -77,6 +80,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
     setSelectedExtensions([]);
     setUserAgent(settings.defaultUserAgent);
     setNotes('');
+    setFingerprint(undefined);
   };
 
   const handleSubmit = () => {
@@ -117,6 +121,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         extensions: selectedExtensions,
         userAgent: userAgent || settings.defaultUserAgent,
         notes,
+        fingerprint,
       });
       toast.success('تم تحديث البروفايل بنجاح');
     } else {
@@ -129,6 +134,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         status: 'stopped',
         createdAt: new Date(),
         notes,
+        fingerprint,
       };
       addProfile(newProfile);
       toast.success('تم إنشاء البروفايل بنجاح');
@@ -183,7 +189,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         )}
 
         <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid grid-cols-4 w-full bg-muted">
+          <TabsList className="grid grid-cols-5 w-full bg-muted">
             <TabsTrigger value="general" className="flex items-center gap-2">
               <Globe className="w-4 h-4" />
               <span className="hidden sm:inline">عام</span>
@@ -191,6 +197,10 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
             <TabsTrigger value="proxy" className="flex items-center gap-2">
               <Shield className="w-4 h-4" />
               <span className="hidden sm:inline">البروكسي</span>
+            </TabsTrigger>
+            <TabsTrigger value="fingerprint" className="flex items-center gap-2">
+              <Fingerprint className="w-4 h-4" />
+              <span className="hidden sm:inline">البصمة</span>
             </TabsTrigger>
             <TabsTrigger value="extensions" className="flex items-center gap-2">
               <Puzzle className="w-4 h-4" />
@@ -304,6 +314,10 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="fingerprint" className="space-y-4 mt-4">
+            <FingerprintTab fingerprint={fingerprint} onChange={setFingerprint} />
           </TabsContent>
 
           <TabsContent value="extensions" className="space-y-4 mt-4">
