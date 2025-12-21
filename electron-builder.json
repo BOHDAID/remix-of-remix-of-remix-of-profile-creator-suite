@@ -1,6 +1,9 @@
 {
   "appId": "com.browsermanager.app",
   "productName": "Browser Manager",
+  "extraMetadata": {
+    "main": "electron/main.js"
+  },
   "directories": {
     "output": "release"
   },
