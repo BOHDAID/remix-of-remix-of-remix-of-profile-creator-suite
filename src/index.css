@@ -72,13 +72,14 @@
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+    color-scheme: dark;
+  }
+
   body {
     @apply bg-background text-foreground font-cairo antialiased;
     direction: rtl;
-  }
-
-  html {
-    scroll-behavior: smooth;
   }
 }
 
