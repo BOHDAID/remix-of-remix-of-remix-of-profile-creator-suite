@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Globe, Shield, Puzzle, FileText } from 'lucide-react';
+import { Globe, Shield, Puzzle, FileText, AlertTriangle } from 'lucide-react';
+import { checkLicenseStatus } from '@/lib/licenseUtils';
 
 interface CreateProfileModalProps {
   open: boolean;
@@ -30,7 +31,10 @@ interface CreateProfileModalProps {
 }
 
 export function CreateProfileModal({ open, onClose, editProfile }: CreateProfileModalProps) {
-  const { addProfile, updateProfile, extensions, settings, license, profiles } = useAppStore();
+  const { addProfile, updateProfile, extensions, settings, license, profiles, setActiveView } = useAppStore();
+  
+  // التحقق من حالة الترخيص
+  const licenseCheck = checkLicenseStatus(license, profiles.length);
   
   const [name, setName] = useState('');
   const [useProxy, setUseProxy] = useState(false);
@@ -81,13 +85,19 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
       return;
     }
 
-    // Check license limit (only for new profiles)
-    if (!editProfile && license) {
-      const currentCount = profiles.length;
-      if (currentCount >= license.maxProfiles) {
-        toast.error(`لقد وصلت للحد الأقصى من البروفايلات (${license.maxProfiles}). قم بترقية الترخيص للحصول على المزيد.`);
-        return;
-      }
+    // التحقق من حد البروفايلات (فقط للبروفايلات الجديدة)
+    if (!editProfile && !licenseCheck.canCreate) {
+      const maxProfiles = licenseCheck.maxProfiles === -1 ? 'غير محدود' : licenseCheck.maxProfiles;
+      toast.error(`لقد وصلت للحد الأقصى من البروفايلات (${maxProfiles}). قم بترقية الترخيص للحصول على المزيد.`, {
+        action: {
+          label: 'ترقية الترخيص',
+          onClick: () => {
+            onClose();
+            setActiveView('license');
+          },
+        },
+      });
+      return;
     }
 
     const proxy: ProxySettings | null = useProxy && proxyHost && proxyPort
@@ -145,6 +155,32 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
             {editProfile ? 'تعديل البروفايل' : 'إنشاء بروفايل جديد'}
           </DialogTitle>
         </DialogHeader>
+
+        {/* تحذير حد البروفايلات */}
+        {!editProfile && !licenseCheck.canCreate && (
+          <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/30">
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-warning">وصلت للحد الأقصى من البروفايلات</p>
+              <p className="text-sm text-muted-foreground">
+                لديك {licenseCheck.currentProfiles} من {licenseCheck.maxProfiles === -1 ? '∞' : licenseCheck.maxProfiles} بروفايل.
+                {!license && ' قم بتفعيل الترخيص للحصول على المزيد.'}
+                {license && ' قم بترقية الترخيص للحصول على المزيد.'}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onClose();
+                setActiveView('license');
+              }}
+              className="border-warning/50 text-warning hover:bg-warning/10"
+            >
+              {license ? 'ترقية' : 'تفعيل'}
+            </Button>
+          </div>
+        )}
 
         <Tabs defaultValue="general" className="w-full">
           <TabsList className="grid grid-cols-4 w-full bg-muted">
