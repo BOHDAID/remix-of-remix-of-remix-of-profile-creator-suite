@@ -16,7 +16,6 @@ import { IdentityGeneratorView } from '@/components/identity/IdentityGeneratorVi
 import { AdvancedFingerprintView } from '@/components/fingerprint/AdvancedFingerprintView';
 import { AdvancedSecurityView } from '@/components/security/AdvancedSecurityView';
 import { AdvancedProxyView } from '@/components/proxy/AdvancedProxyView';
-import { CollaborationView } from '@/components/collaboration/CollaborationView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -69,8 +68,6 @@ export default function Index() {
         return <IdentityGeneratorView />;
       case 'fingerprint':
         return <AdvancedFingerprintView />;
-      case 'collaboration':
-        return <CollaborationView />;
       default:
         return <DashboardView />;
     }

@@ -12,11 +12,9 @@ import {
   LayoutDashboard,
   Calendar,
   ShieldCheck,
-  Bell,
   Brain,
   User,
-  Fingerprint,
-  Users2
+  Fingerprint
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -42,7 +40,6 @@ export function Sidebar() {
     { id: 'schedule' as const, label: t('schedule'), icon: Calendar },
     { id: 'leakTest' as const, label: t('leakTest'), icon: ShieldCheck },
     { id: 'security' as const, label: t('security'), icon: Shield },
-    { id: 'collaboration' as const, label: isRTL ? 'التعاون' : 'Team', icon: Users2 },
     { id: 'backup' as const, label: t('backup'), icon: Database },
     { id: 'settings' as const, label: t('settings'), icon: Settings },
     { id: 'license' as const, label: t('license'), icon: Key },
