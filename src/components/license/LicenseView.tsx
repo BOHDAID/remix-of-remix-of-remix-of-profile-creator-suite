@@ -116,18 +116,54 @@ export function LicenseView() {
 
     try {
       // Decode the license key (Base64 encoded JSON)
-      const decoded = JSON.parse(atob(licenseKey.trim()));
-
-      // Validate license structure
-      if (!decoded.k || !decoded.t || decoded.m === undefined) {
-        throw new Error('Invalid license format');
+      let decoded;
+      try {
+        const decodedStr = atob(licenseKey.trim());
+        decoded = JSON.parse(decodedStr);
+      } catch {
+        throw new Error('Invalid Base64 or JSON');
       }
 
-      // Check expiration
-      if (decoded.e && new Date(decoded.e) < new Date()) {
-        toast.error('كود الترخيص منتهي الصلاحية');
-        setLoading(false);
-        return;
+      // Strict validation of license structure
+      // 1. Check all required fields exist
+      if (!decoded.k || !decoded.t || decoded.m === undefined || !decoded.c) {
+        throw new Error('Missing required fields');
+      }
+
+      // 2. Validate key format: XXXX-XXXX-XXXX-XXXX (uppercase letters and numbers)
+      const keyPattern = /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+      if (typeof decoded.k !== 'string' || !keyPattern.test(decoded.k)) {
+        throw new Error('Invalid key format');
+      }
+
+      // 3. Validate license type is one of known types
+      const validTypes = ['trial', 'basic', 'pro', 'enterprise'];
+      if (!validTypes.includes(decoded.t)) {
+        throw new Error('Invalid license type');
+      }
+
+      // 4. Validate maxProfiles is a number
+      if (typeof decoded.m !== 'number') {
+        throw new Error('Invalid maxProfiles');
+      }
+
+      // 5. Validate creation timestamp is a reasonable number
+      if (typeof decoded.c !== 'number' || decoded.c < 1700000000000 || decoded.c > Date.now() + 86400000) {
+        throw new Error('Invalid creation timestamp');
+      }
+
+      // 6. Validate expiration date format if present
+      if (decoded.e) {
+        const expDate = new Date(decoded.e);
+        if (isNaN(expDate.getTime())) {
+          throw new Error('Invalid expiration date');
+        }
+        // Check expiration
+        if (expDate < new Date()) {
+          toast.error('كود الترخيص منتهي الصلاحية');
+          setLoading(false);
+          return;
+        }
       }
 
       // Check if license is revoked
