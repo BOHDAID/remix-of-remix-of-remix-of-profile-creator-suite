@@ -94,12 +94,27 @@ export function UpdatesView() {
           toast.success('أنت تستخدم أحدث إصدار');
         }
       } else {
-        setUpdateState(prev => ({
-          ...prev,
-          checking: false,
-          error: result?.error || 'فشل التحقق من التحديثات',
-        }));
-        toast.error(result?.error || 'فشل التحقق من التحديثات');
+        // Handle "No published versions" error specially
+        const errorMsg = result?.error || 'فشل التحقق من التحديثات';
+        const isNoRelease = errorMsg.toLowerCase().includes('no published versions') || 
+                            errorMsg.toLowerCase().includes('cannot find latest');
+        
+        if (isNoRelease) {
+          setUpdateState(prev => ({
+            ...prev,
+            checking: false,
+            available: false,
+            error: null,
+          }));
+          toast.success('أنت تستخدم أحدث إصدار متاح');
+        } else {
+          setUpdateState(prev => ({
+            ...prev,
+            checking: false,
+            error: errorMsg,
+          }));
+          toast.error(errorMsg);
+        }
       }
     } catch (error) {
       setUpdateState(prev => ({
