@@ -158,3 +158,50 @@ export interface FingerprintSettings {
   // Random
   randomize: boolean;
 }
+
+// Scheduling
+export interface ProfileSchedule {
+  id: string;
+  profileId: string;
+  enabled: boolean;
+  type: 'once' | 'daily' | 'weekly' | 'custom';
+  time: string; // HH:mm format
+  days?: number[]; // 0-6 for weekly (Sunday = 0)
+  date?: string; // YYYY-MM-DD for once
+  duration?: number; // minutes to run before auto-stop
+  lastRun?: Date;
+  nextRun?: Date;
+}
+
+// Notifications
+export interface AppNotification {
+  id: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  title: string;
+  message: string;
+  timestamp: Date;
+  read: boolean;
+  actionUrl?: string;
+  category: 'proxy' | 'profile' | 'schedule' | 'security' | 'system';
+}
+
+// Usage Statistics
+export interface UsageStats {
+  profileId: string;
+  date: string; // YYYY-MM-DD
+  runTime: number; // minutes
+  launchCount: number;
+}
+
+// Leak Test Result
+export interface LeakTestResult {
+  id: string;
+  proxyChainId: string;
+  timestamp: Date;
+  ipLeak: boolean;
+  dnsLeak: boolean;
+  webrtcLeak: boolean;
+  detectedIP: string;
+  expectedIP?: string;
+  dnsServers: string[];
+}
