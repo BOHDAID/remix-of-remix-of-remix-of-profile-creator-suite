@@ -62,6 +62,7 @@ export interface AppSettings {
   closeToTray: boolean;
   fontSize: 'small' | 'medium' | 'large' | 'xlarge';
   customTheme?: CustomTheme;
+  autoLoadExtensions: boolean; // تشغيل الإضافات تلقائياً عند فتح البروفايل
 }
 
 export interface CustomTheme {

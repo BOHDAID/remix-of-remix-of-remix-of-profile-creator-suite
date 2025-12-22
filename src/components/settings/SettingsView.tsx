@@ -15,7 +15,8 @@ import {
   AlertCircle,
   Languages,
   Palette,
-  Type
+  Type,
+  Puzzle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { isElectron, getElectronAPI } from '@/lib/electron';
@@ -229,6 +230,25 @@ export function SettingsView() {
           <h2 className="font-semibold">{t('appBehavior')}</h2>
           
           <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <Puzzle className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <Label htmlFor="autoLoadExtensions" className="cursor-pointer">
+                    {isRTL ? 'تشغيل الإضافات تلقائياً' : 'Auto-load Extensions'}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {isRTL ? 'تشغيل الإضافات المحددة تلقائياً عند فتح البروفايل' : 'Automatically load extensions when profile starts'}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="autoLoadExtensions"
+                checked={settings.autoLoadExtensions}
+                onCheckedChange={(checked) => updateSettings({ autoLoadExtensions: checked })}
+              />
+            </div>
+
             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
               <div className="flex items-center gap-3">
                 <RefreshCw className="w-5 h-5 text-muted-foreground" />

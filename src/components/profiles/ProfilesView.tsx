@@ -5,15 +5,25 @@ import { ProfileCard } from './ProfileCard';
 import { CreateProfileModal } from './CreateProfileModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Users, LayoutGrid, List } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, Search, Users, LayoutGrid, List, Play, Square, CheckSquare, XSquare, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { isElectron, getElectronAPI } from '@/lib/electron';
+import { checkLicenseStatus } from '@/lib/licenseUtils';
 
 export function ProfilesView() {
-  const { profiles } = useAppStore();
+  const { profiles, updateProfile, extensions, settings, license, setActiveView } = useAppStore();
   const [showModal, setShowModal] = useState(false);
   const [editProfile, setEditProfile] = useState<Profile | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [launchingBatch, setLaunchingBatch] = useState(false);
+
+  const electronAPI = getElectronAPI();
+  const licenseCheck = checkLicenseStatus(license, profiles.length);
 
   const filteredProfiles = profiles.filter(p =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -30,6 +40,138 @@ export function ProfilesView() {
     setEditProfile(null);
   };
 
+  const toggleProfileSelection = (profileId: string) => {
+    const newSelected = new Set(selectedProfiles);
+    if (newSelected.has(profileId)) {
+      newSelected.delete(profileId);
+    } else {
+      newSelected.add(profileId);
+    }
+    setSelectedProfiles(newSelected);
+  };
+
+  const selectAll = () => {
+    const stoppedProfiles = filteredProfiles.filter(p => p.status === 'stopped');
+    setSelectedProfiles(new Set(stoppedProfiles.map(p => p.id)));
+  };
+
+  const deselectAll = () => {
+    setSelectedProfiles(new Set());
+  };
+
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    if (isSelectionMode) {
+      setSelectedProfiles(new Set());
+    }
+  };
+
+  const launchSelectedProfiles = async () => {
+    if (selectedProfiles.size === 0) {
+      toast.error('يرجى اختيار بروفايلات للتشغيل');
+      return;
+    }
+
+    if (!licenseCheck.canRun) {
+      toast.error(licenseCheck.message, {
+        action: {
+          label: 'تفعيل الترخيص',
+          onClick: () => setActiveView('license'),
+        },
+      });
+      return;
+    }
+
+    if (!isElectron()) {
+      toast.error('تشغيل المتصفح متاح فقط في تطبيق سطح المكتب');
+      return;
+    }
+
+    if (!settings.chromiumPath) {
+      toast.error('يرجى تحديد مسار Chromium في الإعدادات أولاً');
+      return;
+    }
+
+    setLaunchingBatch(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const profileId of selectedProfiles) {
+      const profile = profiles.find(p => p.id === profileId);
+      if (!profile || profile.status === 'running') continue;
+
+      try {
+        // Get extension paths based on autoLoadExtensions setting
+        const profileExtensions = settings.autoLoadExtensions
+          ? extensions.filter(e => profile.extensions.includes(e.id) && e.enabled).map(e => e.path)
+          : [];
+
+        const result = await electronAPI?.launchProfile({
+          chromiumPath: settings.chromiumPath,
+          proxy: profile.proxy,
+          extensions: profileExtensions,
+          userAgent: profile.userAgent || settings.defaultUserAgent,
+          profileId: profile.id
+        });
+
+        if (result?.success) {
+          updateProfile(profile.id, { status: 'running' });
+          successCount++;
+        } else {
+          failCount++;
+        }
+
+        // Small delay between launches
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    setLaunchingBatch(false);
+    setSelectedProfiles(new Set());
+    setIsSelectionMode(false);
+
+    if (successCount > 0) {
+      toast.success(`تم تشغيل ${successCount} بروفايل بنجاح`);
+    }
+    if (failCount > 0) {
+      toast.error(`فشل تشغيل ${failCount} بروفايل`);
+    }
+  };
+
+  const stopSelectedProfiles = async () => {
+    if (selectedProfiles.size === 0) return;
+
+    let successCount = 0;
+
+    for (const profileId of selectedProfiles) {
+      const profile = profiles.find(p => p.id === profileId);
+      if (!profile || profile.status === 'stopped') continue;
+
+      try {
+        const result = await electronAPI?.stopProfile(profile.id);
+        if (result?.success) {
+          updateProfile(profile.id, { status: 'stopped' });
+          successCount++;
+        }
+      } catch (error) {
+        // Continue with others
+      }
+    }
+
+    setSelectedProfiles(new Set());
+    if (successCount > 0) {
+      toast.success(`تم إيقاف ${successCount} بروفايل`);
+    }
+  };
+
+  const runningSelectedCount = Array.from(selectedProfiles).filter(id => 
+    profiles.find(p => p.id === id)?.status === 'running'
+  ).length;
+
+  const stoppedSelectedCount = selectedProfiles.size - runningSelectedCount;
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -43,11 +185,67 @@ export function ProfilesView() {
             إدارة وتشغيل بروفايلات المتصفح
           </p>
         </div>
-        <Button variant="glow" onClick={() => setShowModal(true)}>
-          <Plus className="w-4 h-4 ml-2" />
-          إنشاء بروفايل
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant={isSelectionMode ? "default" : "outline"} 
+            onClick={toggleSelectionMode}
+          >
+            <CheckSquare className="w-4 h-4 ml-2" />
+            {isSelectionMode ? 'إلغاء التحديد' : 'تحديد متعدد'}
+          </Button>
+          <Button variant="glow" onClick={() => setShowModal(true)}>
+            <Plus className="w-4 h-4 ml-2" />
+            إنشاء بروفايل
+          </Button>
+        </div>
       </div>
+
+      {/* Selection Actions Bar */}
+      {isSelectionMode && (
+        <div className="flex flex-wrap items-center gap-3 p-4 bg-primary/10 border border-primary/20 rounded-lg animate-fade-in">
+          <span className="text-sm font-medium">
+            تم تحديد {selectedProfiles.size} بروفايل
+          </span>
+          <div className="flex gap-2 mr-auto">
+            <Button variant="ghost" size="sm" onClick={selectAll}>
+              <CheckSquare className="w-4 h-4 ml-1" />
+              تحديد الكل
+            </Button>
+            <Button variant="ghost" size="sm" onClick={deselectAll}>
+              <XSquare className="w-4 h-4 ml-1" />
+              إلغاء الكل
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            {stoppedSelectedCount > 0 && (
+              <Button 
+                variant="glow" 
+                size="sm" 
+                onClick={launchSelectedProfiles}
+                disabled={launchingBatch || !licenseCheck.canRun}
+              >
+                {launchingBatch ? (
+                  <Loader2 className="w-4 h-4 ml-1 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4 ml-1" />
+                )}
+                تشغيل ({stoppedSelectedCount})
+              </Button>
+            )}
+            {runningSelectedCount > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={stopSelectedProfiles}
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+              >
+                <Square className="w-4 h-4 ml-1" />
+                إيقاف ({runningSelectedCount})
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="flex gap-3">
@@ -117,10 +315,29 @@ export function ProfilesView() {
           {filteredProfiles.map((profile, index) => (
             <div 
               key={profile.id} 
-              className="animate-slide-in"
+              className="animate-slide-in relative"
               style={{ animationDelay: `${index * 50}ms` }}
             >
-              <ProfileCard profile={profile} onEdit={handleEdit} />
+              {isSelectionMode && (
+                <div 
+                  className="absolute top-3 right-3 z-10 cursor-pointer"
+                  onClick={() => toggleProfileSelection(profile.id)}
+                >
+                  <Checkbox 
+                    checked={selectedProfiles.has(profile.id)}
+                    className="h-5 w-5 border-2"
+                  />
+                </div>
+              )}
+              <div 
+                className={cn(
+                  isSelectionMode && "cursor-pointer",
+                  isSelectionMode && selectedProfiles.has(profile.id) && "ring-2 ring-primary rounded-xl"
+                )}
+                onClick={isSelectionMode ? () => toggleProfileSelection(profile.id) : undefined}
+              >
+                <ProfileCard profile={profile} onEdit={handleEdit} />
+              </div>
             </div>
           ))}
         </div>

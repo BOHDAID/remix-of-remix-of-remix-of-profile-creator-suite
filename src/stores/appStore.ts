@@ -65,6 +65,7 @@ const defaultSettings: AppSettings = {
   startMinimized: false,
   closeToTray: true,
   fontSize: 'medium',
+  autoLoadExtensions: true,
 };
 
 const defaultSecurity: SecuritySettings = {

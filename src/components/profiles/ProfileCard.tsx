@@ -56,10 +56,10 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
     setLaunching(true);
 
     try {
-      // Get extension paths for this profile
-      const profileExtensions = extensions
-        .filter(e => profile.extensions.includes(e.id) && e.enabled)
-        .map(e => e.path);
+      // Get extension paths based on autoLoadExtensions setting
+      const profileExtensions = settings.autoLoadExtensions
+        ? extensions.filter(e => profile.extensions.includes(e.id) && e.enabled).map(e => e.path)
+        : [];
 
       const result = await electronAPI?.launchProfile({
         chromiumPath: settings.chromiumPath,
