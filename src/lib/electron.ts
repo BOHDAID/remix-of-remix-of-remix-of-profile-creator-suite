@@ -1,4 +1,8 @@
 // Type definitions for Electron API
+// Updated to support fingerprint settings
+
+import { FingerprintSettings } from '@/types';
+
 export interface ElectronAPI {
   // Window controls
   minimizeWindow: () => void;
@@ -54,6 +58,7 @@ export interface LaunchProfileData {
   extensions: string[];
   userAgent: string;
   profileId: string;
+  fingerprint?: FingerprintSettings;
 }
 
 export interface LaunchResult {
