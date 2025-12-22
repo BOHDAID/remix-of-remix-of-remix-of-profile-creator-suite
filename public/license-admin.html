@@ -571,6 +571,37 @@
   <div class="toast" id="toast"></div>
 
   <script>
+    // License signature system - MUST match the app's licenseSignature.ts
+    const SECRET_KEY = 'BHD-LICENSE-SECRET-2024-XK9M';
+
+    function simpleHash(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      
+      let signature = '';
+      for (let i = 0; i < 4; i++) {
+        let subHash = 0;
+        const subStr = str + SECRET_KEY + i.toString();
+        for (let j = 0; j < subStr.length; j++) {
+          const char = subStr.charCodeAt(j);
+          subHash = ((subHash << 5) - subHash) + char;
+          subHash = subHash & subHash;
+        }
+        signature += Math.abs(subHash).toString(16).padStart(8, '0');
+      }
+      
+      return signature.toUpperCase();
+    }
+
+    function generateLicenseSignature(data) {
+      const payload = `${data.k}|${data.t}|${data.m}|${data.e || 'null'}|${data.c}|${SECRET_KEY}`;
+      return simpleHash(payload);
+    }
+
     // License types configuration
     const LICENSE_TYPES = {
       trial: { name: 'تجريبي', days: 7, profiles: 5 },
@@ -717,12 +748,26 @@
       const key = generateKey();
 
       // Create license data for encoding
+      const creationTimestamp = now.getTime();
+      const licenseDataForSignature = {
+        k: key,
+        t: licenseType,
+        m: maxProfiles,
+        e: expiration.toISOString(),
+        c: creationTimestamp
+      };
+
+      // Generate signature
+      const signature = generateLicenseSignature(licenseDataForSignature);
+
+      // Add signature to license data
       const licenseData = {
         k: key,
         t: licenseType,
         m: maxProfiles,
         e: expiration.toISOString(),
-        c: now.toISOString()
+        c: creationTimestamp,
+        s: signature  // Digital signature to prevent tampering
       };
 
       const licenseCode = btoa(JSON.stringify(licenseData));
