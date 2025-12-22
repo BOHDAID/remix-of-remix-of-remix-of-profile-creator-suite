@@ -551,6 +551,7 @@ ipcMain.handle('get-running-profiles', () => {
 // Tile profile windows in grid, horizontal, or vertical layout
 ipcMain.handle('tile-profile-windows', async (event, layout) => {
   const { screen } = require('electron');
+  const { exec } = require('child_process');
   const displays = screen.getAllDisplays();
   const primaryDisplay = displays[0];
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
@@ -563,41 +564,110 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
     return { success: false, error: 'لا توجد بروفايلات تعمل' };
   }
 
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'هذه الميزة متاحة فقط على Windows' };
+  }
+
   try {
-    // For Chromium windows, we need to use OS-level commands
-    // Since spawn processes don't give us window handles, we'll use a different approach
+    let cols, rows, winWidth, winHeight;
     
     if (layout === 'grid') {
-      // Calculate grid dimensions
-      const cols = Math.ceil(Math.sqrt(count));
-      const rows = Math.ceil(count / cols);
-      const winWidth = Math.floor(screenWidth / cols);
-      const winHeight = Math.floor(screenHeight / rows);
-      
-      // We can't directly control Chrome windows from Node.js
-      // But we can send coordinates to frontend for display
-      return { 
-        success: true, 
-        message: 'تم ترتيب النوافذ بشكل شبكي',
-        layout: { cols, rows, winWidth, winHeight }
-      };
+      cols = Math.ceil(Math.sqrt(count));
+      rows = Math.ceil(count / cols);
+      winWidth = Math.floor(screenWidth / cols);
+      winHeight = Math.floor(screenHeight / rows);
     } else if (layout === 'horizontal') {
-      const winWidth = Math.floor(screenWidth / count);
-      return { 
-        success: true, 
-        message: 'تم ترتيب النوافذ أفقياً',
-        layout: { cols: count, rows: 1, winWidth, winHeight: screenHeight }
-      };
+      cols = count;
+      rows = 1;
+      winWidth = Math.floor(screenWidth / count);
+      winHeight = screenHeight;
     } else if (layout === 'vertical') {
-      const winHeight = Math.floor(screenHeight / count);
-      return { 
-        success: true, 
-        message: 'تم ترتيب النوافذ عمودياً',
-        layout: { cols: 1, rows: count, winWidth: screenWidth, winHeight }
-      };
+      cols = 1;
+      rows = count;
+      winWidth = screenWidth;
+      winHeight = Math.floor(screenHeight / count);
     }
+
+    // Get PIDs of running profiles
+    const pids = [];
+    for (const [id, browser] of runningProfiles.entries()) {
+      if (browser && browser.pid) {
+        pids.push(browser.pid);
+      }
+    }
+
+    if (pids.length === 0) {
+      return { success: false, error: 'لا توجد نوافذ متاحة' };
+    }
+
+    // PowerShell script to move and resize windows
+    const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport("user32.dll")]
+    public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+}
+"@
+
+$pids = @(${pids.join(',')})
+$cols = ${cols}
+$rows = ${rows}
+$winWidth = ${winWidth}
+$winHeight = ${winHeight}
+$screenX = ${screenX}
+$screenY = ${screenY}
+
+$windows = @()
+$null = [IntPtr]::Zero
+$hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
+
+while ($hwnd -ne [IntPtr]::Zero) {
+    $processId = 0
+    [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
+    if ($pids -contains $processId) {
+        $windows += @{ hwnd = $hwnd; pid = $processId }
+    }
+    $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
+}
+
+$i = 0
+foreach ($win in $windows) {
+    $col = $i % $cols
+    $row = [Math]::Floor($i / $cols)
+    $x = $screenX + ($col * $winWidth)
+    $y = $screenY + ($row * $winHeight)
     
-    return { success: true };
+    [Win32]::ShowWindow($win.hwnd, 9) | Out-Null
+    [Win32]::MoveWindow($win.hwnd, $x, $y, $winWidth, $winHeight, $true) | Out-Null
+    $i++
+}
+`;
+
+    return new Promise((resolve) => {
+      exec(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, (error, stdout, stderr) => {
+        if (error) {
+          console.log('Tile error:', error);
+          console.log('stderr:', stderr);
+          resolve({ success: false, error: error.message });
+        } else {
+          resolve({ 
+            success: true, 
+            message: layout === 'grid' ? 'تم ترتيب النوافذ بشكل شبكي' : 
+                     layout === 'horizontal' ? 'تم ترتيب النوافذ أفقياً' : 'تم ترتيب النوافذ عمودياً'
+          });
+        }
+      });
+    });
   } catch (error) {
     return { success: false, error: error.message };
   }
