@@ -12,6 +12,7 @@ export interface Profile {
   group?: string;
   antiTracking?: AntiTrackingSettings;
   fingerprint?: FingerprintSettings;
+  autoLoadExtensions: boolean; // تشغيل الإضافات تلقائياً لهذا البروفايل
 }
 
 export interface ProxySettings {
