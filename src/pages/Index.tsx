@@ -11,6 +11,9 @@ import { BackupView } from '@/components/backup/BackupView';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { ScheduleView } from '@/components/schedule/ScheduleView';
 import { LeakTestView } from '@/components/leaktest/LeakTestView';
+import { AIHubView } from '@/components/ai/AIHubView';
+import { IdentityGeneratorView } from '@/components/identity/IdentityGeneratorView';
+import { AdvancedFingerprintView } from '@/components/fingerprint/AdvancedFingerprintView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -57,6 +60,14 @@ export default function Index() {
         return <ScheduleView />;
       case 'leakTest':
         return <LeakTestView />;
+      case 'aiHub':
+        return <AIHubView />;
+      case 'identity':
+        return <IdentityGeneratorView />;
+      case 'fingerprint':
+        return <AdvancedFingerprintView />;
+      case 'collaboration':
+        return <div className="p-6"><h1 className="text-2xl font-bold">{isRTL ? 'التعاون الجماعي - قريباً' : 'Team Collaboration - Coming Soon'}</h1></div>;
       default:
         return <DashboardView />;
     }
