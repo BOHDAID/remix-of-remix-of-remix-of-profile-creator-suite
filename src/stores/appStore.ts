@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Profile, Extension, LicenseInfo, AppSettings, ProxySettings, SecuritySettings, ActivityLog, BackupData, CustomTheme, ProxyChain } from '@/types';
+import { Profile, Extension, LicenseInfo, AppSettings, ProxySettings, SecuritySettings, ActivityLog, BackupData, CustomTheme, ProxyChain, ProfileSchedule, AppNotification, UsageStats, LeakTestResult } from '@/types';
 
 interface AppState {
   // License
@@ -51,9 +51,29 @@ interface AppState {
   updateCustomTheme: (id: string, updates: Partial<CustomTheme>) => void;
   deleteCustomTheme: (id: string) => void;
   
+  // Schedules
+  schedules: ProfileSchedule[];
+  addSchedule: (schedule: ProfileSchedule) => void;
+  updateSchedule: (id: string, updates: Partial<ProfileSchedule>) => void;
+  deleteSchedule: (id: string) => void;
+  
+  // Notifications
+  notifications: AppNotification[];
+  addNotification: (notification: AppNotification) => void;
+  markNotificationRead: (id: string) => void;
+  clearNotifications: () => void;
+  
+  // Usage Stats
+  usageStats: UsageStats[];
+  addUsageStat: (stat: UsageStats) => void;
+  
+  // Leak Test Results
+  leakTestResults: LeakTestResult[];
+  addLeakTestResult: (result: LeakTestResult) => void;
+  
   // UI State
-  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup';
-  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup') => void;
+  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule';
+  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule') => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -169,6 +189,44 @@ export const useAppStore = create<AppState>()(
       })),
       deleteCustomTheme: (id) => set((state) => ({
         customThemes: state.customThemes.filter((t) => t.id !== id),
+      })),
+      
+      // Schedules
+      schedules: [],
+      addSchedule: (schedule) => set((state) => ({
+        schedules: [...state.schedules, schedule],
+      })),
+      updateSchedule: (id, updates) => set((state) => ({
+        schedules: state.schedules.map((s) =>
+          s.id === id ? { ...s, ...updates } : s
+        ),
+      })),
+      deleteSchedule: (id) => set((state) => ({
+        schedules: state.schedules.filter((s) => s.id !== id),
+      })),
+      
+      // Notifications
+      notifications: [],
+      addNotification: (notification) => set((state) => ({
+        notifications: [notification, ...state.notifications].slice(0, 100),
+      })),
+      markNotificationRead: (id) => set((state) => ({
+        notifications: state.notifications.map((n) =>
+          n.id === id ? { ...n, read: true } : n
+        ),
+      })),
+      clearNotifications: () => set({ notifications: [] }),
+      
+      // Usage Stats
+      usageStats: [],
+      addUsageStat: (stat) => set((state) => ({
+        usageStats: [...state.usageStats, stat].slice(-1000),
+      })),
+      
+      // Leak Test Results
+      leakTestResults: [],
+      addLeakTestResult: (result) => set((state) => ({
+        leakTestResults: [result, ...state.leakTestResults].slice(0, 100),
       })),
       
       // UI State
