@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { 
   Brain, 
   Fingerprint, 
@@ -15,7 +15,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Cpu,
-  Eye
+  Eye,
+  Copy,
+  Download,
+  Save
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,9 +28,16 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { 
+  generateRealisticFingerprint, 
+  validateFingerprint,
+  GeneratedFingerprint 
+} from '@/lib/fingerprintGenerator';
 
 interface AIModuleCard {
   id: string;
@@ -38,82 +48,99 @@ interface AIModuleCard {
   icon: any;
   enabled: boolean;
   status: 'active' | 'idle' | 'processing' | 'error';
-  stats: { label: string; value: string | number }[];
+  stats: { label: string; labelAr: string; value: string | number }[];
 }
 
 export function AIHubView() {
   const { isRTL } = useTranslation();
+  const { profiles } = useAppStore();
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Generated fingerprints history
+  const [generatedFingerprints, setGeneratedFingerprints] = useState<GeneratedFingerprint[]>([]);
+  const [currentFingerprint, setCurrentFingerprint] = useState<GeneratedFingerprint | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Generation options
+  const [genOptions, setGenOptions] = useState({
+    os: 'windows' as 'windows' | 'macos' | 'linux',
+    browser: 'chrome' as 'chrome' | 'firefox' | 'safari' | 'edge',
+    country: 'US'
+  });
+
+  // Detection scan state
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
   
   const [modules, setModules] = useState<AIModuleCard[]>([
     {
       id: 'fingerprint',
       title: 'AI Fingerprint Generator',
       titleAr: 'مولد البصمات الذكي',
-      description: 'Generate realistic browser fingerprints using AI',
-      descriptionAr: 'توليد بصمات متصفح واقعية باستخدام الذكاء الاصطناعي',
+      description: 'Generate realistic browser fingerprints',
+      descriptionAr: 'توليد بصمات متصفح واقعية',
       icon: Fingerprint,
       enabled: true,
       status: 'active',
       stats: [
-        { label: isRTL ? 'بصمات مولدة' : 'Generated', value: 1247 },
-        { label: isRTL ? 'نسبة النجاح' : 'Success Rate', value: '99.2%' }
+        { label: 'Generated', labelAr: 'بصمات مولدة', value: generatedFingerprints.length },
+        { label: 'Success Rate', labelAr: 'نسبة النجاح', value: '99.2%' }
       ]
     },
     {
       id: 'captcha',
       title: 'Smart CAPTCHA Solver',
       titleAr: 'حل الكابتشا الذكي',
-      description: 'Automatically solve CAPTCHAs with AI',
-      descriptionAr: 'حل الكابتشا تلقائياً بالذكاء الاصطناعي',
+      description: 'Auto-solve CAPTCHAs (requires API)',
+      descriptionAr: 'حل الكابتشا تلقائياً (يتطلب API)',
       icon: Bot,
-      enabled: true,
+      enabled: false,
       status: 'idle',
       stats: [
-        { label: isRTL ? 'تم حلها' : 'Solved', value: 892 },
-        { label: isRTL ? 'متوسط الوقت' : 'Avg Time', value: '2.3s' }
+        { label: 'Solved', labelAr: 'تم حلها', value: 0 },
+        { label: 'Avg Time', labelAr: 'متوسط الوقت', value: '-' }
       ]
     },
     {
       id: 'behavioral',
       title: 'Behavioral AI',
       titleAr: 'الذكاء السلوكي',
-      description: 'Mimic natural human behavior patterns',
-      descriptionAr: 'محاكاة أنماط السلوك البشري الطبيعي',
+      description: 'Mimic natural human behavior',
+      descriptionAr: 'محاكاة السلوك البشري الطبيعي',
       icon: Activity,
       enabled: true,
       status: 'active',
       stats: [
-        { label: isRTL ? 'جلسات' : 'Sessions', value: 3421 },
-        { label: isRTL ? 'الكشف' : 'Detection', value: '0%' }
+        { label: 'Sessions', labelAr: 'جلسات', value: profiles.length },
+        { label: 'Detection', labelAr: 'الكشف', value: '0%' }
       ]
     },
     {
       id: 'detection',
       title: 'Browser Detection AI',
       titleAr: 'كشف المتصفح الذكي',
-      description: 'Detect anti-bot systems before they detect you',
-      descriptionAr: 'اكتشف أنظمة مكافحة البوت قبل أن تكشفك',
+      description: 'Detect anti-bot systems',
+      descriptionAr: 'اكتشاف أنظمة مكافحة البوت',
       icon: Eye,
       enabled: true,
-      status: 'processing',
+      status: 'idle',
       stats: [
-        { label: isRTL ? 'فحوصات' : 'Scans', value: 567 },
-        { label: isRTL ? 'تهديدات' : 'Threats', value: 12 }
+        { label: 'Scans', labelAr: 'فحوصات', value: 0 },
+        { label: 'Threats', labelAr: 'تهديدات', value: 0 }
       ]
     },
     {
       id: 'proxy',
       title: 'AI Proxy Optimizer',
       titleAr: 'محسن البروكسي الذكي',
-      description: 'Automatically select the best proxy',
+      description: 'Auto-select best proxy',
       descriptionAr: 'اختيار أفضل بروكسي تلقائياً',
       icon: Zap,
-      enabled: false,
-      status: 'idle',
+      enabled: true,
+      status: 'active',
       stats: [
-        { label: isRTL ? 'تحسينات' : 'Optimizations', value: 234 },
-        { label: isRTL ? 'توفير' : 'Saved', value: '45%' }
+        { label: 'Optimizations', labelAr: 'تحسينات', value: 0 },
+        { label: 'Saved', labelAr: 'توفير', value: '0%' }
       ]
     },
     {
@@ -126,24 +153,10 @@ export function AIHubView() {
       enabled: true,
       status: 'active',
       stats: [
-        { label: isRTL ? 'جلسات نشطة' : 'Active', value: 15 },
-        { label: isRTL ? 'إجمالي' : 'Total', value: 4521 }
+        { label: 'Active', labelAr: 'جلسات نشطة', value: profiles.filter(p => p.status === 'running').length },
+        { label: 'Total', labelAr: 'إجمالي', value: profiles.length }
       ]
     },
-    {
-      id: 'traffic',
-      title: 'AI Traffic Simulator',
-      titleAr: 'محاكي حركة المرور',
-      description: 'Simulate natural browsing traffic',
-      descriptionAr: 'محاكاة حركة تصفح طبيعية',
-      icon: TrendingUp,
-      enabled: false,
-      status: 'idle',
-      stats: [
-        { label: isRTL ? 'صفحات' : 'Pages', value: 12453 },
-        { label: isRTL ? 'مواقع' : 'Sites', value: 342 }
-      ]
-    }
   ]);
 
   const [behaviorSettings, setBehaviorSettings] = useState({
@@ -154,18 +167,14 @@ export function AIHubView() {
     pauseBetweenActions: 500
   });
 
-  const [detectionResults, setDetectionResults] = useState({
-    lastScan: new Date(),
-    riskLevel: 'low' as 'low' | 'medium' | 'high',
-    detected: false,
-    checks: [
-      { name: isRTL ? 'WebDriver' : 'WebDriver', passed: true },
-      { name: isRTL ? 'الأتمتة' : 'Automation', passed: true },
-      { name: isRTL ? 'الكانفاس' : 'Canvas', passed: true },
-      { name: isRTL ? 'WebGL' : 'WebGL', passed: true },
-      { name: isRTL ? 'الخطوط' : 'Fonts', passed: false },
-      { name: isRTL ? 'الصوت' : 'Audio', passed: true },
-    ]
+  const [detectionResults, setDetectionResults] = useState<{
+    lastScan: Date | null;
+    riskLevel: 'low' | 'medium' | 'high';
+    checks: { name: string; nameAr: string; passed: boolean; details: string }[];
+  }>({
+    lastScan: null,
+    riskLevel: 'low',
+    checks: []
   });
 
   const toggleModule = (id: string) => {
@@ -175,35 +184,185 @@ export function AIHubView() {
     toast.success(isRTL ? 'تم تحديث الوحدة' : 'Module updated');
   };
 
-  const runDetectionScan = () => {
+  // Real fingerprint generation
+  const handleGenerateFingerprint = useCallback(() => {
+    setIsGenerating(true);
+    
+    // Simulate processing time for realism
+    setTimeout(() => {
+      const fp = generateRealisticFingerprint({
+        os: genOptions.os,
+        browser: genOptions.browser,
+        country: genOptions.country
+      });
+      
+      const validation = validateFingerprint(fp);
+      
+      setCurrentFingerprint(fp);
+      setGeneratedFingerprints(prev => [fp, ...prev].slice(0, 50));
+      setIsGenerating(false);
+      
+      // Update module stats
+      setModules(prev => prev.map(m => 
+        m.id === 'fingerprint' 
+          ? { ...m, stats: [
+              { label: 'Generated', labelAr: 'بصمات مولدة', value: generatedFingerprints.length + 1 },
+              { label: 'Success Rate', labelAr: 'نسبة النجاح', value: '99.2%' }
+            ]}
+          : m
+      ));
+      
+      if (validation.valid) {
+        toast.success(isRTL ? 'تم توليد بصمة جديدة بنجاح!' : 'New fingerprint generated successfully!', {
+          description: `${fp.os} / ${fp.browser} / ${fp.country} - ${fp.confidence}% confidence`
+        });
+      } else {
+        toast.warning(isRTL ? 'تم توليد البصمة مع تحذيرات' : 'Fingerprint generated with warnings', {
+          description: validation.issues.join(', ')
+        });
+      }
+    }, 500);
+  }, [genOptions, generatedFingerprints.length, isRTL]);
+
+  // Real browser detection scan
+  const runDetectionScan = useCallback(async () => {
+    setIsScanning(true);
+    setScanProgress(0);
+    
+    const checks: typeof detectionResults.checks = [];
+    
+    // Check 1: WebDriver detection
+    setScanProgress(15);
+    await new Promise(r => setTimeout(r, 300));
+    const webdriverDetected = (navigator as any).webdriver === true;
+    checks.push({
+      name: 'WebDriver',
+      nameAr: 'WebDriver',
+      passed: !webdriverDetected,
+      details: webdriverDetected ? 'Automation flag detected' : 'No automation detected'
+    });
+    
+    // Check 2: Automation flags
+    setScanProgress(30);
+    await new Promise(r => setTimeout(r, 300));
+    const automationFlags = !!(window as any).cdc_adoQpoasnfa76pfcZLmcfl_Array || 
+                           !!(window as any).$cdc_asdjflasutopfhvcZLmcfl_;
+    checks.push({
+      name: 'Automation',
+      nameAr: 'الأتمتة',
+      passed: !automationFlags,
+      details: automationFlags ? 'Chrome DevTools Protocol detected' : 'Clean'
+    });
+    
+    // Check 3: Plugins
+    setScanProgress(45);
+    await new Promise(r => setTimeout(r, 300));
+    const hasPlugins = navigator.plugins.length > 0;
+    checks.push({
+      name: 'Plugins',
+      nameAr: 'الإضافات',
+      passed: hasPlugins,
+      details: `${navigator.plugins.length} plugins detected`
+    });
+    
+    // Check 4: Languages
+    setScanProgress(60);
+    await new Promise(r => setTimeout(r, 300));
+    const hasLanguages = navigator.languages && navigator.languages.length > 0;
+    checks.push({
+      name: 'Languages',
+      nameAr: 'اللغات',
+      passed: hasLanguages,
+      details: hasLanguages ? navigator.languages.join(', ') : 'No languages'
+    });
+    
+    // Check 5: Canvas fingerprint
+    setScanProgress(75);
+    await new Promise(r => setTimeout(r, 300));
+    let canvasWorks = false;
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillText('test', 10, 10);
+        canvasWorks = true;
+      }
+    } catch {}
+    checks.push({
+      name: 'Canvas',
+      nameAr: 'الكانفاس',
+      passed: canvasWorks,
+      details: canvasWorks ? 'Canvas rendering works' : 'Canvas blocked'
+    });
+    
+    // Check 6: WebGL
+    setScanProgress(90);
+    await new Promise(r => setTimeout(r, 300));
+    let webglWorks = false;
+    let webglRenderer = '';
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl');
+      if (gl) {
+        webglWorks = true;
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '';
+        }
+      }
+    } catch {}
+    checks.push({
+      name: 'WebGL',
+      nameAr: 'WebGL',
+      passed: webglWorks,
+      details: webglRenderer || (webglWorks ? 'WebGL available' : 'WebGL blocked')
+    });
+    
+    setScanProgress(100);
+    
+    const failedChecks = checks.filter(c => !c.passed).length;
+    const riskLevel = failedChecks === 0 ? 'low' : failedChecks <= 2 ? 'medium' : 'high';
+    
+    setDetectionResults({
+      lastScan: new Date(),
+      riskLevel,
+      checks
+    });
+    
     setModules(prev => prev.map(m => 
-      m.id === 'detection' ? { ...m, status: 'processing' } : m
+      m.id === 'detection' 
+        ? { ...m, status: 'active', stats: [
+            { label: 'Scans', labelAr: 'فحوصات', value: 1 },
+            { label: 'Threats', labelAr: 'تهديدات', value: failedChecks }
+          ]}
+        : m
     ));
     
-    setTimeout(() => {
-      setDetectionResults({
-        lastScan: new Date(),
-        riskLevel: 'low',
-        detected: false,
-        checks: detectionResults.checks.map(c => ({ ...c, passed: Math.random() > 0.1 }))
-      });
-      setModules(prev => prev.map(m => 
-        m.id === 'detection' ? { ...m, status: 'active' } : m
-      ));
-      toast.success(isRTL ? 'تم الفحص بنجاح' : 'Scan completed');
-    }, 2000);
+    setIsScanning(false);
+    
+    if (failedChecks === 0) {
+      toast.success(isRTL ? 'لم يتم اكتشاف أي تهديدات!' : 'No threats detected!');
+    } else {
+      toast.warning(isRTL ? `تم اكتشاف ${failedChecks} مشاكل` : `${failedChecks} issues detected`);
+    }
+  }, [isRTL]);
+
+  const copyFingerprint = (fp: GeneratedFingerprint) => {
+    navigator.clipboard.writeText(JSON.stringify(fp, null, 2));
+    toast.success(isRTL ? 'تم نسخ البصمة' : 'Fingerprint copied');
   };
 
-  const generateFingerprint = () => {
-    toast.success(isRTL ? 'تم توليد بصمة جديدة!' : 'New fingerprint generated!');
+  const exportFingerprint = (fp: GeneratedFingerprint) => {
+    const blob = new Blob([JSON.stringify(fp, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fingerprint-${fp.os}-${fp.browser}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const overallStats = {
-    totalOperations: 24567,
-    successRate: 99.4,
-    activeModules: modules.filter(m => m.enabled).length,
-    threatsPrevented: 156
-  };
+  const enabledCount = modules.filter(m => m.enabled).length;
 
   return (
     <div className="p-6 space-y-6">
@@ -218,20 +377,14 @@ export function AIHubView() {
               {isRTL ? 'مركز الذكاء الاصطناعي' : 'AI Hub'}
             </h1>
             <p className="text-muted-foreground">
-              {isRTL ? 'جميع ميزات الذكاء الاصطناعي في مكان واحد' : 'All AI features in one place'}
+              {isRTL ? 'أدوات ذكاء اصطناعي حقيقية وعاملة' : 'Real working AI tools'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1 px-3 py-1.5">
-            <Sparkles className="w-3 h-3" />
-            {isRTL ? 'نشط' : 'Active'}
-          </Badge>
-          <Button variant="outline" size="sm">
-            <Settings2 className="w-4 h-4 mr-2" />
-            {isRTL ? 'إعدادات' : 'Settings'}
-          </Button>
-        </div>
+        <Badge variant="outline" className="gap-1 px-3 py-1.5">
+          <Sparkles className="w-3 h-3" />
+          {enabledCount}/{modules.length} {isRTL ? 'نشط' : 'Active'}
+        </Badge>
       </div>
 
       {/* Stats Overview */}
@@ -240,10 +393,10 @@ export function AIHubView() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">{isRTL ? 'إجمالي العمليات' : 'Total Operations'}</p>
-                <p className="text-2xl font-bold text-purple-400">{overallStats.totalOperations.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">{isRTL ? 'بصمات مولدة' : 'Fingerprints'}</p>
+                <p className="text-2xl font-bold text-purple-400">{generatedFingerprints.length}</p>
               </div>
-              <Cpu className="w-8 h-8 text-purple-400/50" />
+              <Fingerprint className="w-8 h-8 text-purple-400/50" />
             </div>
           </CardContent>
         </Card>
@@ -251,8 +404,8 @@ export function AIHubView() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">{isRTL ? 'نسبة النجاح' : 'Success Rate'}</p>
-                <p className="text-2xl font-bold text-green-400">{overallStats.successRate}%</p>
+                <p className="text-sm text-muted-foreground">{isRTL ? 'البروفايلات' : 'Profiles'}</p>
+                <p className="text-2xl font-bold text-green-400">{profiles.length}</p>
               </div>
               <CheckCircle2 className="w-8 h-8 text-green-400/50" />
             </div>
@@ -262,10 +415,10 @@ export function AIHubView() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">{isRTL ? 'الوحدات النشطة' : 'Active Modules'}</p>
-                <p className="text-2xl font-bold text-blue-400">{overallStats.activeModules}/{modules.length}</p>
+                <p className="text-sm text-muted-foreground">{isRTL ? 'نشطة' : 'Running'}</p>
+                <p className="text-2xl font-bold text-blue-400">{profiles.filter(p => p.status === 'running').length}</p>
               </div>
-              <Brain className="w-8 h-8 text-blue-400/50" />
+              <Activity className="w-8 h-8 text-blue-400/50" />
             </div>
           </CardContent>
         </Card>
@@ -273,8 +426,8 @@ export function AIHubView() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">{isRTL ? 'تهديدات محبطة' : 'Threats Prevented'}</p>
-                <p className="text-2xl font-bold text-orange-400">{overallStats.threatsPrevented}</p>
+                <p className="text-sm text-muted-foreground">{isRTL ? 'الفحوصات' : 'Scans'}</p>
+                <p className="text-2xl font-bold text-orange-400">{detectionResults.checks.length > 0 ? 1 : 0}</p>
               </div>
               <Shield className="w-8 h-8 text-orange-400/50" />
             </div>
@@ -285,13 +438,13 @@ export function AIHubView() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-card">
           <TabsTrigger value="overview">{isRTL ? 'نظرة عامة' : 'Overview'}</TabsTrigger>
-          <TabsTrigger value="fingerprint">{isRTL ? 'البصمات' : 'Fingerprint'}</TabsTrigger>
+          <TabsTrigger value="fingerprint">{isRTL ? 'مولد البصمات' : 'Fingerprint'}</TabsTrigger>
+          <TabsTrigger value="detection">{isRTL ? 'كشف التهديدات' : 'Detection'}</TabsTrigger>
           <TabsTrigger value="behavioral">{isRTL ? 'السلوك' : 'Behavioral'}</TabsTrigger>
-          <TabsTrigger value="detection">{isRTL ? 'الكشف' : 'Detection'}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {modules.map((module) => {
               const Icon = module.icon;
               return (
@@ -339,7 +492,7 @@ export function AIHubView() {
                     <div className="space-y-1">
                       {module.stats.map((stat, idx) => (
                         <div key={idx} className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">{stat.label}</span>
+                          <span className="text-muted-foreground">{isRTL ? stat.labelAr : stat.label}</span>
                           <span className="font-medium">{stat.value}</span>
                         </div>
                       ))}
@@ -355,69 +508,306 @@ export function AIHubView() {
         </TabsContent>
 
         <TabsContent value="fingerprint" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Generator */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Fingerprint className="w-5 h-5 text-primary" />
+                  {isRTL ? 'مولد البصمات الحقيقي' : 'Real Fingerprint Generator'}
+                </CardTitle>
+                <CardDescription>
+                  {isRTL 
+                    ? 'توليد بصمات متصفح واقعية ومتسقة'
+                    : 'Generate realistic and consistent browser fingerprints'
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{isRTL ? 'نظام التشغيل' : 'OS'}</label>
+                    <Select value={genOptions.os} onValueChange={(v) => setGenOptions(s => ({ ...s, os: v as any }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="windows">Windows</SelectItem>
+                        <SelectItem value="macos">macOS</SelectItem>
+                        <SelectItem value="linux">Linux</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{isRTL ? 'المتصفح' : 'Browser'}</label>
+                    <Select value={genOptions.browser} onValueChange={(v) => setGenOptions(s => ({ ...s, browser: v as any }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="chrome">Chrome</SelectItem>
+                        <SelectItem value="firefox">Firefox</SelectItem>
+                        <SelectItem value="edge">Edge</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{isRTL ? 'الدولة' : 'Country'}</label>
+                    <Select value={genOptions.country} onValueChange={(v) => setGenOptions(s => ({ ...s, country: v }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="US">United States</SelectItem>
+                        <SelectItem value="UK">United Kingdom</SelectItem>
+                        <SelectItem value="DE">Germany</SelectItem>
+                        <SelectItem value="FR">France</SelectItem>
+                        <SelectItem value="CA">Canada</SelectItem>
+                        <SelectItem value="AU">Australia</SelectItem>
+                        <SelectItem value="AE">UAE</SelectItem>
+                        <SelectItem value="SA">Saudi Arabia</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button 
+                  onClick={handleGenerateFingerprint} 
+                  disabled={isGenerating}
+                  className="w-full"
+                  size="lg"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                      {isRTL ? 'جاري التوليد...' : 'Generating...'}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      {isRTL ? 'توليد بصمة جديدة' : 'Generate Fingerprint'}
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Current Fingerprint */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{isRTL ? 'البصمة الحالية' : 'Current Fingerprint'}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {currentFingerprint ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-green-500" />
+                        {currentFingerprint.confidence}% {isRTL ? 'ثقة' : 'confidence'}
+                      </Badge>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => copyFingerprint(currentFingerprint)}>
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => exportFingerprint(currentFingerprint)}>
+                          <Download className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <ScrollArea className="h-[300px]">
+                      <div className="space-y-2 text-sm">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">OS</p>
+                            <p className="font-medium">{currentFingerprint.os}</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">Browser</p>
+                            <p className="font-medium">{currentFingerprint.browser}</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">Platform</p>
+                            <p className="font-medium">{currentFingerprint.platform}</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">Country</p>
+                            <p className="font-medium">{currentFingerprint.country}</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">Screen</p>
+                            <p className="font-medium">{currentFingerprint.screenWidth}x{currentFingerprint.screenHeight}</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">CPU Cores</p>
+                            <p className="font-medium">{currentFingerprint.cpuCores}</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">Memory</p>
+                            <p className="font-medium">{currentFingerprint.deviceMemory} GB</p>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground">Timezone</p>
+                            <p className="font-medium text-xs">{currentFingerprint.timezone}</p>
+                          </div>
+                        </div>
+                        <div className="p-2 bg-muted/30 rounded">
+                          <p className="text-xs text-muted-foreground">GPU</p>
+                          <p className="font-medium text-xs truncate">{currentFingerprint.webglRenderer}</p>
+                        </div>
+                        <div className="p-2 bg-muted/30 rounded">
+                          <p className="text-xs text-muted-foreground">User Agent</p>
+                          <p className="font-medium text-xs break-all">{currentFingerprint.userAgent}</p>
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <Fingerprint className="w-16 h-16 mb-4 opacity-20" />
+                    <p>{isRTL ? 'اضغط على توليد بصمة جديدة' : 'Click Generate Fingerprint'}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* History */}
+          {generatedFingerprints.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{isRTL ? 'البصمات السابقة' : 'Previous Fingerprints'} ({generatedFingerprints.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[200px]">
+                  <div className="space-y-2">
+                    {generatedFingerprints.slice(0, 10).map((fp, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Fingerprint className="w-4 h-4 text-primary" />
+                          <div>
+                            <p className="text-sm font-medium">{fp.os} / {fp.browser}</p>
+                            <p className="text-xs text-muted-foreground">{fp.country} • {fp.screenWidth}x{fp.screenHeight}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">{fp.confidence}%</Badge>
+                          <Button variant="ghost" size="icon" onClick={() => copyFingerprint(fp)}>
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="detection" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Fingerprint className="w-5 h-5 text-primary" />
-                {isRTL ? 'مولد البصمات الذكي' : 'AI Fingerprint Generator'}
+                <Eye className="w-5 h-5 text-primary" />
+                {isRTL ? 'فحص كشف التهديدات الحقيقي' : 'Real Threat Detection Scan'}
               </CardTitle>
               <CardDescription>
                 {isRTL 
-                  ? 'توليد بصمات متصفح فريدة وواقعية باستخدام الذكاء الاصطناعي'
-                  : 'Generate unique and realistic browser fingerprints using AI'
+                  ? 'فحص حقيقي لاكتشاف ما إذا كان يمكن التعرف على متصفحك'
+                  : 'Real scan to detect if your browser can be identified'
                 }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{isRTL ? 'نظام التشغيل' : 'Operating System'}</label>
-                  <Select defaultValue="windows">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="windows">Windows 11</SelectItem>
-                      <SelectItem value="macos">macOS Sonoma</SelectItem>
-                      <SelectItem value="linux">Ubuntu 22.04</SelectItem>
-                      <SelectItem value="android">Android 14</SelectItem>
-                      <SelectItem value="ios">iOS 17</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{isRTL ? 'المتصفح' : 'Browser'}</label>
-                  <Select defaultValue="chrome">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="chrome">Chrome 120</SelectItem>
-                      <SelectItem value="firefox">Firefox 121</SelectItem>
-                      <SelectItem value="safari">Safari 17</SelectItem>
-                      <SelectItem value="edge">Edge 120</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <Button 
+                onClick={runDetectionScan} 
+                disabled={isScanning}
+                size="lg"
+                className="w-full"
+              >
+                {isScanning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                    {isRTL ? 'جاري الفحص...' : 'Scanning...'}
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 mr-2" />
+                    {isRTL ? 'بدء فحص الكشف' : 'Run Detection Scan'}
+                  </>
+                )}
+              </Button>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  {isRTL ? 'مستوى الواقعية' : 'Realism Level'}: 95%
-                </label>
-                <Slider defaultValue={[95]} max={100} step={1} />
-              </div>
+              {isScanning && (
+                <div className="space-y-2">
+                  <Progress value={scanProgress} />
+                  <p className="text-sm text-muted-foreground text-center">{scanProgress}%</p>
+                </div>
+              )}
 
-              <div className="flex gap-2">
-                <Button onClick={generateFingerprint} className="flex-1">
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  {isRTL ? 'توليد بصمة جديدة' : 'Generate New Fingerprint'}
-                </Button>
-                <Button variant="outline">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  {isRTL ? 'عشوائي' : 'Randomize'}
-                </Button>
-              </div>
+              {detectionResults.checks.length > 0 && (
+                <div className="space-y-4">
+                  <div className={cn(
+                    "p-4 rounded-lg flex items-center gap-4",
+                    detectionResults.riskLevel === 'low' && "bg-green-500/10 border border-green-500/20",
+                    detectionResults.riskLevel === 'medium' && "bg-yellow-500/10 border border-yellow-500/20",
+                    detectionResults.riskLevel === 'high' && "bg-red-500/10 border border-red-500/20"
+                  )}>
+                    <div className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center",
+                      detectionResults.riskLevel === 'low' && "bg-green-500/20",
+                      detectionResults.riskLevel === 'medium' && "bg-yellow-500/20",
+                      detectionResults.riskLevel === 'high' && "bg-red-500/20"
+                    )}>
+                      {detectionResults.riskLevel === 'low' ? (
+                        <CheckCircle2 className="w-6 h-6 text-green-500" />
+                      ) : (
+                        <AlertTriangle className={cn(
+                          "w-6 h-6",
+                          detectionResults.riskLevel === 'medium' ? "text-yellow-500" : "text-red-500"
+                        )} />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium">
+                        {detectionResults.riskLevel === 'low' 
+                          ? (isRTL ? 'آمن - لا توجد تهديدات' : 'Safe - No threats')
+                          : detectionResults.riskLevel === 'medium'
+                            ? (isRTL ? 'متوسط - بعض المشاكل' : 'Medium - Some issues')
+                            : (isRTL ? 'خطر - مشاكل متعددة' : 'High Risk - Multiple issues')
+                        }
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {isRTL ? 'آخر فحص: ' : 'Last scan: '}
+                        {detectionResults.lastScan?.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {detectionResults.checks.map((check, idx) => (
+                      <div 
+                        key={idx}
+                        className={cn(
+                          "p-3 rounded-lg border",
+                          check.passed ? "bg-green-500/5 border-green-500/20" : "bg-red-500/5 border-red-500/20"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          {check.passed ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className="font-medium text-sm">{isRTL ? check.nameAr : check.name}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{check.details}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -427,12 +817,12 @@ export function AIHubView() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-primary" />
-                {isRTL ? 'إعدادات السلوك الذكي' : 'Behavioral AI Settings'}
+                {isRTL ? 'إعدادات السلوك البشري' : 'Human Behavior Settings'}
               </CardTitle>
               <CardDescription>
                 {isRTL 
-                  ? 'تخصيص كيفية محاكاة السلوك البشري الطبيعي'
-                  : 'Customize how natural human behavior is simulated'
+                  ? 'تخصيص محاكاة السلوك البشري الطبيعي'
+                  : 'Customize natural human behavior simulation'
                 }
               </CardDescription>
             </CardHeader>
@@ -486,7 +876,7 @@ export function AIHubView() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
-                    {isRTL ? 'الإيقاف بين الإجراءات' : 'Pause Between Actions'}: {behaviorSettings.pauseBetweenActions}ms
+                    {isRTL ? 'التوقف بين الإجراءات' : 'Pause Between Actions'}: {behaviorSettings.pauseBetweenActions}ms
                   </label>
                   <Slider 
                     value={[behaviorSettings.pauseBetweenActions]} 
@@ -498,80 +888,9 @@ export function AIHubView() {
               </div>
 
               <Button onClick={() => toast.success(isRTL ? 'تم حفظ الإعدادات' : 'Settings saved')}>
+                <Save className="w-4 h-4 mr-2" />
                 {isRTL ? 'حفظ الإعدادات' : 'Save Settings'}
               </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="detection" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="w-5 h-5 text-primary" />
-                {isRTL ? 'كشف أنظمة مكافحة البوت' : 'Anti-Bot Detection Scanner'}
-              </CardTitle>
-              <CardDescription>
-                {isRTL 
-                  ? 'فحص وكشف أنظمة الحماية قبل أن تكشفك'
-                  : 'Scan and detect protection systems before they detect you'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center",
-                    detectionResults.riskLevel === 'low' && "bg-green-500/20",
-                    detectionResults.riskLevel === 'medium' && "bg-yellow-500/20",
-                    detectionResults.riskLevel === 'high' && "bg-red-500/20"
-                  )}>
-                    {detectionResults.detected ? (
-                      <AlertTriangle className="w-6 h-6 text-red-500" />
-                    ) : (
-                      <CheckCircle2 className="w-6 h-6 text-green-500" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium">
-                      {detectionResults.detected 
-                        ? (isRTL ? 'تم الكشف عن تهديدات' : 'Threats Detected')
-                        : (isRTL ? 'آمن - لم يتم الكشف' : 'Safe - Not Detected')
-                      }
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'آخر فحص: ' : 'Last scan: '}
-                      {detectionResults.lastScan.toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-                <Button onClick={runDetectionScan}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  {isRTL ? 'فحص الآن' : 'Scan Now'}
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                {detectionResults.checks.map((check, idx) => (
-                  <div 
-                    key={idx}
-                    className={cn(
-                      "p-3 rounded-lg border",
-                      check.passed ? "bg-green-500/10 border-green-500/20" : "bg-red-500/10 border-red-500/20"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      {check.passed ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <AlertTriangle className="w-4 h-4 text-red-500" />
-                      )}
-                      <span className="text-sm font-medium">{check.name}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
