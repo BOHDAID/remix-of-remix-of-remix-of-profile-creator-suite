@@ -15,6 +15,13 @@ export interface ElectronAPI {
   stopProfile: (profileId: string) => Promise<StopResult>;
   onProfileClosed: (callback: (profileId: string) => void) => void;
   
+  // Browser window management
+  tileProfileWindows: (layout: 'grid' | 'horizontal' | 'vertical') => Promise<TileResult>;
+  minimizeAllProfiles: () => Promise<void>;
+  restoreAllProfiles: () => Promise<void>;
+  focusProfile: (profileId: string) => Promise<void>;
+  getRunningProfiles: () => Promise<string[]>;
+  
   // Utilities
   getAppPaths: () => Promise<AppPaths>;
   openFolder: (folderPath: string) => Promise<boolean>;
@@ -30,6 +37,11 @@ export interface ElectronAPI {
   // Platform info
   platform: string;
   isElectron: boolean;
+}
+
+export interface TileResult {
+  success: boolean;
+  error?: string;
 }
 
 export interface LaunchProfileData {
