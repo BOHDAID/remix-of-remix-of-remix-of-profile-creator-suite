@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Profile } from '@/types';
 import { ProfileCard } from './ProfileCard';
@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Plus, Search, Users, LayoutGrid, List, Play, Square, 
   CheckSquare, XSquare, Loader2, Grid3X3, Minimize2, 
-  Maximize2, Monitor
+  Maximize2, Monitor, Download, Upload, Copy
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -17,7 +17,7 @@ import { isElectron, getElectronAPI } from '@/lib/electron';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
 
 export function ProfilesView() {
-  const { profiles, updateProfile, extensions, settings, license, setActiveView } = useAppStore();
+  const { profiles, updateProfile, addProfile, extensions, settings, license, setActiveView } = useAppStore();
   const [showModal, setShowModal] = useState(false);
   const [editProfile, setEditProfile] = useState<Profile | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,6 +25,7 @@ export function ProfilesView() {
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [launchingBatch, setLaunchingBatch] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const electronAPI = getElectronAPI();
   const licenseCheck = checkLicenseStatus(license, profiles.length);
@@ -226,6 +227,93 @@ export function ProfilesView() {
     }
   };
 
+  // Clone profile
+  const handleCloneProfile = (profile: Profile) => {
+    const clonedProfile: Profile = {
+      ...profile,
+      id: crypto.randomUUID(),
+      name: `${profile.name} (نسخة)`,
+      status: 'stopped',
+      createdAt: new Date()
+    };
+    addProfile(clonedProfile);
+    toast.success('تم استنساخ البروفايل بنجاح');
+  };
+
+  // Export profiles
+  const handleExportProfiles = () => {
+    const profilesToExport = selectedProfiles.size > 0
+      ? profiles.filter(p => selectedProfiles.has(p.id))
+      : profiles;
+    
+    if (profilesToExport.length === 0) {
+      toast.error('لا توجد بروفايلات للتصدير');
+      return;
+    }
+
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      profiles: profilesToExport.map(p => ({
+        ...p,
+        status: 'stopped', // Always export as stopped
+        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `profiles-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast.success(`تم تصدير ${profilesToExport.length} بروفايل`);
+  };
+
+  // Import profiles
+  const handleImportProfiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        
+        if (!data.profiles || !Array.isArray(data.profiles)) {
+          toast.error('ملف غير صالح');
+          return;
+        }
+
+        let importedCount = 0;
+        for (const profileData of data.profiles) {
+          const newProfile: Profile = {
+            ...profileData,
+            id: crypto.randomUUID(), // New ID to avoid conflicts
+            status: 'stopped',
+            createdAt: new Date()
+          };
+          addProfile(newProfile);
+          importedCount++;
+        }
+
+        toast.success(`تم استيراد ${importedCount} بروفايل`);
+      } catch (error) {
+        toast.error('فشل قراءة الملف');
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -239,7 +327,24 @@ export function ProfilesView() {
             إدارة وتشغيل بروفايلات المتصفح
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Hidden file input for import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportProfiles}
+            className="hidden"
+          />
+          
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="w-4 h-4 ml-2" />
+            استيراد
+          </Button>
+          <Button variant="outline" onClick={handleExportProfiles}>
+            <Download className="w-4 h-4 ml-2" />
+            تصدير {selectedProfiles.size > 0 ? `(${selectedProfiles.size})` : ''}
+          </Button>
           <Button 
             variant={isSelectionMode ? "default" : "outline"} 
             onClick={toggleSelectionMode}
@@ -428,7 +533,7 @@ export function ProfilesView() {
                 )}
                 onClick={isSelectionMode ? () => toggleProfileSelection(profile.id) : undefined}
               >
-                <ProfileCard profile={profile} onEdit={handleEdit} />
+                <ProfileCard profile={profile} onEdit={handleEdit} onClone={handleCloneProfile} />
               </div>
             </div>
           ))}

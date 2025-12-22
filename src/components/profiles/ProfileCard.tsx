@@ -10,7 +10,8 @@ import {
   Shield,
   Puzzle,
   Loader2,
-  Lock
+  Lock,
+  Copy
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -21,9 +22,10 @@ import { checkLicenseStatus } from '@/lib/licenseUtils';
 interface ProfileCardProps {
   profile: Profile;
   onEdit: (profile: Profile) => void;
+  onClone?: (profile: Profile) => void;
 }
 
-export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
+export function ProfileCard({ profile, onEdit, onClone }: ProfileCardProps) {
   const { updateProfile, deleteProfile, extensions, settings, license, profiles, setActiveView } = useAppStore();
   const [launching, setLaunching] = useState(false);
   const electronAPI = getElectronAPI();
@@ -143,7 +145,18 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
           </div>
         </div>
 
-        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onClone && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onClone(profile)}
+              className="h-8 w-8"
+              title="استنساخ"
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

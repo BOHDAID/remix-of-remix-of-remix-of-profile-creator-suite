@@ -37,13 +37,16 @@ function createFingerprintScript(fingerprint, userDataDir) {
 (function() {
   const fp = ${JSON.stringify(fingerprint)};
   
-  // Override navigator properties
+  // ========== Navigator Properties ==========
   const navigatorProps = {
     hardwareConcurrency: { value: fp.cpuCores || fp.hardwareConcurrency },
     deviceMemory: { value: fp.deviceMemory },
     platform: { value: fp.platform },
     language: { value: fp.language },
-    languages: { value: fp.languages || [fp.language] }
+    languages: { value: Object.freeze(fp.languages || [fp.language]) },
+    maxTouchPoints: { value: 0 },
+    vendor: { value: 'Google Inc.' },
+    appVersion: { value: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
   };
   
   for (const [key, descriptor] of Object.entries(navigatorProps)) {
@@ -52,7 +55,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     } catch (e) {}
   }
   
-  // Override screen properties
+  // ========== Screen Properties ==========
   const screenProps = {
     width: { value: fp.screenWidth },
     height: { value: fp.screenHeight },
@@ -68,31 +71,25 @@ function createFingerprintScript(fingerprint, userDataDir) {
     } catch (e) {}
   }
   
-  // Override devicePixelRatio
+  // ========== Window Properties ==========
   try {
     Object.defineProperty(window, 'devicePixelRatio', { value: fp.pixelRatio || 1, configurable: true });
+    Object.defineProperty(window, 'innerWidth', { value: fp.screenWidth - 200, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: fp.screenHeight - 150, configurable: true });
+    Object.defineProperty(window, 'outerWidth', { value: fp.screenWidth, configurable: true });
+    Object.defineProperty(window, 'outerHeight', { value: fp.screenHeight, configurable: true });
   } catch (e) {}
   
-  // Override WebGL
+  // ========== WebGL Spoofing ==========
   const getParameterProxyHandler = {
     apply: function(target, thisArg, args) {
       const param = args[0];
-      const gl = thisArg;
-      
-      // UNMASKED_VENDOR_WEBGL
-      if (param === 37445) {
-        return fp.webglVendor || fp.gpuVendor;
-      }
-      // UNMASKED_RENDERER_WEBGL
-      if (param === 37446) {
-        return fp.webglRenderer || fp.gpu;
-      }
-      
+      if (param === 37445) return fp.webglVendor || fp.gpuVendor;
+      if (param === 37446) return fp.webglRenderer || fp.gpu;
       return target.apply(thisArg, args);
     }
   };
   
-  // Hook WebGL
   const hookWebGL = (proto) => {
     if (proto && proto.getParameter) {
       proto.getParameter = new Proxy(proto.getParameter, getParameterProxyHandler);
@@ -104,18 +101,118 @@ function createFingerprintScript(fingerprint, userDataDir) {
     hookWebGL(WebGL2RenderingContext.prototype);
   }
   
-  // Override timezone
+  // ========== Canvas Fingerprint Spoofing ==========
+  const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+  const noise = () => Math.floor(Math.random() * 10) - 5;
+  
+  HTMLCanvasElement.prototype.toDataURL = function(...args) {
+    const ctx = this.getContext('2d');
+    if (ctx) {
+      const imageData = originalGetImageData.call(ctx, 0, 0, this.width, this.height);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise()));
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+    return originalToDataURL.apply(this, args);
+  };
+  
+  // ========== Audio Context Fingerprint Spoofing ==========
+  if (window.AudioContext || window.webkitAudioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const originalCreateAnalyser = AudioContextClass.prototype.createAnalyser;
+    const originalCreateOscillator = AudioContextClass.prototype.createOscillator;
+    const originalGetFloatFrequencyData = AnalyserNode.prototype.getFloatFrequencyData;
+    
+    AnalyserNode.prototype.getFloatFrequencyData = function(array) {
+      originalGetFloatFrequencyData.call(this, array);
+      for (let i = 0; i < array.length; i++) {
+        array[i] += Math.random() * 0.0001;
+      }
+    };
+  }
+  
+  // ========== WebRTC IP Leak Prevention ==========
+  if (window.RTCPeerConnection) {
+    const origRTCPeerConnection = window.RTCPeerConnection;
+    window.RTCPeerConnection = function(...args) {
+      const config = args[0] || {};
+      config.iceServers = [];
+      args[0] = config;
+      const pc = new origRTCPeerConnection(...args);
+      return pc;
+    };
+    window.RTCPeerConnection.prototype = origRTCPeerConnection.prototype;
+  }
+  
+  // ========== Battery API Spoofing ==========
+  if (navigator.getBattery) {
+    navigator.getBattery = () => Promise.resolve({
+      charging: true,
+      chargingTime: 0,
+      dischargingTime: Infinity,
+      level: 1.0,
+      addEventListener: () => {},
+      removeEventListener: () => {}
+    });
+  }
+  
+  // ========== Media Devices Spoofing ==========
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+    navigator.mediaDevices.enumerateDevices = () => Promise.resolve([
+      { deviceId: 'default', kind: 'audioinput', label: '', groupId: 'default' },
+      { deviceId: 'default', kind: 'videoinput', label: '', groupId: 'default' },
+      { deviceId: 'default', kind: 'audiooutput', label: '', groupId: 'default' }
+    ]);
+  }
+  
+  // ========== Timezone Spoofing ==========
   if (fp.timezone) {
     const originalDateTimeFormat = Intl.DateTimeFormat;
+    const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+    
     Intl.DateTimeFormat = function(locales, options) {
       options = options || {};
       options.timeZone = fp.timezone;
       return new originalDateTimeFormat(locales, options);
     };
     Intl.DateTimeFormat.prototype = originalDateTimeFormat.prototype;
+    
+    Intl.DateTimeFormat.prototype.resolvedOptions = function() {
+      const result = originalResolvedOptions.call(this);
+      result.timeZone = fp.timezone;
+      return result;
+    };
+    
+    // Override Date methods for timezone
+    const tzOffset = (() => {
+      const tzMap = {
+        'America/New_York': -5, 'America/Los_Angeles': -8, 'America/Chicago': -6,
+        'Europe/London': 0, 'Europe/Paris': 1, 'Europe/Berlin': 1, 'Europe/Moscow': 3,
+        'Asia/Dubai': 4, 'Asia/Riyadh': 3, 'Asia/Tokyo': 9, 'Asia/Shanghai': 8,
+        'Asia/Singapore': 8, 'Australia/Sydney': 11
+      };
+      return (tzMap[fp.timezone] || 0) * 60;
+    })();
+    
+    const origGetTimezoneOffset = Date.prototype.getTimezoneOffset;
+    Date.prototype.getTimezoneOffset = function() {
+      return -tzOffset;
+    };
   }
   
-  console.log('[Fingerprint] Spoofing applied:', fp.gpu, fp.cpu);
+  // ========== Font Fingerprint Protection ==========
+  const originalMeasureText = CanvasRenderingContext2D.prototype.measureText;
+  CanvasRenderingContext2D.prototype.measureText = function(text) {
+    const result = originalMeasureText.call(this, text);
+    return {
+      ...result,
+      width: result.width + Math.random() * 0.001
+    };
+  };
+  
+  console.log('[Fingerprint] Advanced spoofing applied:', fp.gpu, fp.cpu, fp.timezone);
 })();
 `;
     
