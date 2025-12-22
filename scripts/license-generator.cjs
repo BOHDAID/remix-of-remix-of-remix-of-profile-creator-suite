@@ -63,15 +63,51 @@ function generateKey() {
   return segments.join('-');
 }
 
-// إنشاء كود التفعيل المشفر
+// المفتاح السري للتوقيع - يجب أن يكون مطابقاً للمفتاح في الكود
+const SECRET_KEY = 'BHD-LICENSE-SECRET-2024-XK9M';
+
+// دالة التجزئة للتوقيع
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  
+  let signature = '';
+  for (let i = 0; i < 4; i++) {
+    let subHash = 0;
+    const subStr = str + SECRET_KEY + i.toString();
+    for (let j = 0; j < subStr.length; j++) {
+      const char = subStr.charCodeAt(j);
+      subHash = ((subHash << 5) - subHash) + char;
+      subHash = subHash & subHash;
+    }
+    signature += Math.abs(subHash).toString(16).padStart(8, '0');
+  }
+  
+  return signature.toUpperCase();
+}
+
+// إنشاء التوقيع الرقمي
+function generateSignature(data) {
+  const payload = `${data.k}|${data.t}|${data.m}|${data.e || 'null'}|${data.c}|${SECRET_KEY}`;
+  return simpleHash(payload);
+}
+
+// إنشاء كود التفعيل المشفر مع التوقيع
 function createActivationCode(license) {
+  const timestamp = Date.now();
   const data = {
     k: license.key,
     t: license.type,
     m: license.maxProfiles,
     e: license.expiresAt,
-    c: Date.now()
+    c: timestamp
   };
+  // إضافة التوقيع الرقمي
+  data.s = generateSignature(data);
   return Buffer.from(JSON.stringify(data)).toString('base64');
 }
 
