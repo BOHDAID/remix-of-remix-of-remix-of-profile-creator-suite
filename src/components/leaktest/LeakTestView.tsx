@@ -47,7 +47,7 @@ export function LeakTestView() {
   const { proxyChains, addLeakTestResult, leakTestResults } = useAppStore();
   const { isRTL } = useTranslation();
   
-  const [selectedProxyId, setSelectedProxyId] = useState<string>('');
+  const [selectedProxyId, setSelectedProxyId] = useState<string>('direct');
   const [testing, setTesting] = useState(false);
   const [currentResult, setCurrentResult] = useState<LeakTestResult | null>(null);
 
@@ -69,7 +69,7 @@ export function LeakTestView() {
       
       const result: LeakTestResult = {
         id: crypto.randomUUID(),
-        proxyChainId: selectedProxyId || 'direct',
+        proxyChainId: selectedProxyId,
         timestamp: new Date(),
         ipLeak,
         dnsLeak,
@@ -125,7 +125,7 @@ export function LeakTestView() {
                   <SelectValue placeholder={isRTL ? 'اختر بروكسي (اختياري)' : 'Select proxy (optional)'} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{isRTL ? 'اتصال مباشر' : 'Direct connection'}</SelectItem>
+                  <SelectItem value="direct">{isRTL ? 'اتصال مباشر' : 'Direct connection'}</SelectItem>
                   {proxyChains.map((chain) => (
                     <SelectItem key={chain.id} value={chain.id}>
                       {chain.name} ({chain.proxies[0]?.type}://{chain.proxies[0]?.host})
