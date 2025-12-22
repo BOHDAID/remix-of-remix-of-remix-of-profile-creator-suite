@@ -6,7 +6,11 @@ import { CreateProfileModal } from './CreateProfileModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Search, Users, LayoutGrid, List, Play, Square, CheckSquare, XSquare, Loader2 } from 'lucide-react';
+import { 
+  Plus, Search, Users, LayoutGrid, List, Play, Square, 
+  CheckSquare, XSquare, Loader2, Grid3X3, Minimize2, 
+  Maximize2, Monitor
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isElectron, getElectronAPI } from '@/lib/electron';
@@ -172,6 +176,54 @@ export function ProfilesView() {
 
   const stoppedSelectedCount = selectedProfiles.size - runningSelectedCount;
 
+  // Count all running profiles
+  const runningProfiles = profiles.filter(p => p.status === 'running');
+  const runningCount = runningProfiles.length;
+
+  // Window management functions
+  const handleTileWindows = async (layout: 'grid' | 'horizontal' | 'vertical') => {
+    if (!isElectron()) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    try {
+      const result = await electronAPI?.tileProfileWindows(layout);
+      if (result?.success) {
+        toast.success('تم ترتيب النوافذ');
+      } else {
+        toast.error(result?.error || 'فشل ترتيب النوافذ');
+      }
+    } catch {
+      toast.error('حدث خطأ أثناء ترتيب النوافذ');
+    }
+  };
+
+  const handleMinimizeAll = async () => {
+    if (!isElectron()) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    try {
+      await electronAPI?.minimizeAllProfiles();
+      toast.success('تم تصغير جميع النوافذ');
+    } catch {
+      toast.error('حدث خطأ');
+    }
+  };
+
+  const handleRestoreAll = async () => {
+    if (!isElectron()) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    try {
+      await electronAPI?.restoreAllProfiles();
+      toast.success('تم استعادة جميع النوافذ');
+    } catch {
+      toast.error('حدث خطأ');
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -243,6 +295,56 @@ export function ProfilesView() {
                 إيقاف ({runningSelectedCount})
               </Button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Running Profiles Control Bar */}
+      {runningCount > 0 && (
+        <div className="flex flex-wrap items-center gap-3 p-4 bg-success/10 border border-success/20 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Monitor className="w-5 h-5 text-success" />
+            <span className="text-sm font-medium text-success">
+              {runningCount} بروفايل يعمل
+            </span>
+          </div>
+          <div className="flex gap-2 mr-auto">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleTileWindows('grid')}
+              className="border-success/30 hover:bg-success/10"
+            >
+              <Grid3X3 className="w-4 h-4 ml-1" />
+              ترتيب شبكي
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleTileWindows('horizontal')}
+              className="border-success/30 hover:bg-success/10"
+            >
+              <LayoutGrid className="w-4 h-4 ml-1" />
+              ترتيب أفقي
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleMinimizeAll}
+              className="border-success/30 hover:bg-success/10"
+            >
+              <Minimize2 className="w-4 h-4 ml-1" />
+              تصغير الكل
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRestoreAll}
+              className="border-success/30 hover:bg-success/10"
+            >
+              <Maximize2 className="w-4 h-4 ml-1" />
+              استعادة الكل
+            </Button>
           </div>
         </div>
       )}
