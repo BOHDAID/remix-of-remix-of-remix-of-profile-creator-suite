@@ -8,7 +8,11 @@ import {
   Download,
   Shield,
   Database,
-  Network
+  Network,
+  LayoutDashboard,
+  Calendar,
+  ShieldCheck,
+  Bell
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -17,14 +21,19 @@ import { useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export function Sidebar() {
-  const { activeView, setActiveView, profiles, license } = useAppStore();
+  const { activeView, setActiveView, profiles, license, notifications } = useAppStore();
   const [collapsed, setCollapsed] = useState(false);
   const { t, isRTL } = useTranslation();
 
+  const unreadNotifications = notifications?.filter(n => !n.read).length || 0;
+
   const menuItems = [
+    { id: 'dashboard' as const, label: t('dashboard'), icon: LayoutDashboard },
     { id: 'profiles' as const, label: t('profiles'), icon: Users },
     { id: 'extensions' as const, label: t('extensions'), icon: Puzzle },
     { id: 'proxy' as const, label: t('proxyManager'), icon: Network },
+    { id: 'schedule' as const, label: t('schedule'), icon: Calendar },
+    { id: 'leakTest' as const, label: t('leakTest'), icon: ShieldCheck },
     { id: 'security' as const, label: t('security'), icon: Shield },
     { id: 'backup' as const, label: t('backup'), icon: Database },
     { id: 'settings' as const, label: t('settings'), icon: Settings },
@@ -66,7 +75,7 @@ export function Sidebar() {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => setActiveView(item.id as any)}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
                 isActive 

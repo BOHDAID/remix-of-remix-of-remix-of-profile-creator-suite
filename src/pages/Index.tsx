@@ -8,6 +8,9 @@ import { UpdatesView } from '@/components/updates/UpdatesView';
 import { SecurityView } from '@/components/security/SecurityView';
 import { ProxyManagerView } from '@/components/proxy/ProxyManagerView';
 import { BackupView } from '@/components/backup/BackupView';
+import { DashboardView } from '@/components/dashboard/DashboardView';
+import { ScheduleView } from '@/components/schedule/ScheduleView';
+import { LeakTestView } from '@/components/leaktest/LeakTestView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -32,6 +35,8 @@ export default function Index() {
 
   const renderView = () => {
     switch (activeView) {
+      case 'dashboard':
+        return <DashboardView />;
       case 'profiles':
         return <ProfilesView />;
       case 'extensions':
@@ -48,8 +53,12 @@ export default function Index() {
         return <ProxyManagerView />;
       case 'backup':
         return <BackupView />;
+      case 'schedule':
+        return <ScheduleView />;
+      case 'leakTest':
+        return <LeakTestView />;
       default:
-        return <ProfilesView />;
+        return <DashboardView />;
     }
   };
 

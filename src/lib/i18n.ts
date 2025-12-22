@@ -26,6 +26,10 @@ export const translations = {
     proxyManager: 'مدير البروكسي',
     security: 'الأمان',
     backup: 'النسخ الاحتياطي',
+    dashboard: 'لوحة التحكم',
+    schedule: 'الجدولة',
+    leakTest: 'فحص التسريب',
+    notifications: 'الإشعارات',
     
     // Profiles
     profilesTitle: 'إدارة البروفايلات',
@@ -243,6 +247,10 @@ export const translations = {
     proxyManager: 'Proxy Manager',
     security: 'Security',
     backup: 'Backup',
+    dashboard: 'Dashboard',
+    schedule: 'Schedule',
+    leakTest: 'Leak Test',
+    notifications: 'Notifications',
     
     // Profiles
     profilesTitle: 'Profile Management',
