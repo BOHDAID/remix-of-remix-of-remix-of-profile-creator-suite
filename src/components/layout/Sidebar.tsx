@@ -8,8 +8,7 @@ import {
   Download,
   Shield,
   Database,
-  Network,
-  ShieldCheck
+  Network
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -30,7 +29,6 @@ export function Sidebar() {
     { id: 'backup' as const, label: t('backup'), icon: Database },
     { id: 'settings' as const, label: t('settings'), icon: Settings },
     { id: 'license' as const, label: t('license'), icon: Key },
-    { id: 'license-admin' as const, label: isRTL ? 'إدارة التراخيص' : 'License Admin', icon: ShieldCheck },
     { id: 'updates' as const, label: t('updates'), icon: Download },
   ];
 
