@@ -25,6 +25,7 @@ import {
   setRevocationUrl,
   clearRevocationCache 
 } from '@/lib/licenseRevocation';
+import { verifyLicenseSignature } from '@/lib/licenseSignature';
 
 const LICENSE_TIERS = [
   {
@@ -125,34 +126,39 @@ export function LicenseView() {
       }
 
       // Strict validation of license structure
-      // 1. Check all required fields exist
-      if (!decoded.k || !decoded.t || decoded.m === undefined || !decoded.c) {
+      // 1. Check all required fields exist including signature
+      if (!decoded.k || !decoded.t || decoded.m === undefined || !decoded.c || !decoded.s) {
         throw new Error('Missing required fields');
       }
 
-      // 2. Validate key format: XXXX-XXXX-XXXX-XXXX (uppercase letters and numbers)
+      // 2. VERIFY DIGITAL SIGNATURE - This is the key security check!
+      if (!verifyLicenseSignature(decoded)) {
+        throw new Error('Invalid signature - license is tampered or fake');
+      }
+
+      // 3. Validate key format: XXXX-XXXX-XXXX-XXXX (uppercase letters and numbers)
       const keyPattern = /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
       if (typeof decoded.k !== 'string' || !keyPattern.test(decoded.k)) {
         throw new Error('Invalid key format');
       }
 
-      // 3. Validate license type is one of known types
+      // 4. Validate license type is one of known types
       const validTypes = ['trial', 'basic', 'pro', 'enterprise'];
       if (!validTypes.includes(decoded.t)) {
         throw new Error('Invalid license type');
       }
 
-      // 4. Validate maxProfiles is a number
+      // 5. Validate maxProfiles is a number
       if (typeof decoded.m !== 'number') {
         throw new Error('Invalid maxProfiles');
       }
 
-      // 5. Validate creation timestamp is a reasonable number
+      // 6. Validate creation timestamp is a reasonable number
       if (typeof decoded.c !== 'number' || decoded.c < 1700000000000 || decoded.c > Date.now() + 86400000) {
         throw new Error('Invalid creation timestamp');
       }
 
-      // 6. Validate expiration date format if present
+      // 7. Validate expiration date format if present
       if (decoded.e) {
         const expDate = new Date(decoded.e);
         if (isNaN(expDate.getTime())) {
