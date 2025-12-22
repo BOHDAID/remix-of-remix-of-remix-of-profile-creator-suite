@@ -52,8 +52,8 @@ interface AppState {
   deleteCustomTheme: (id: string) => void;
   
   // UI State
-  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup';
-  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup') => void;
+  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'license-admin';
+  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'license-admin') => void;
 }
 
 const defaultSettings: AppSettings = {
