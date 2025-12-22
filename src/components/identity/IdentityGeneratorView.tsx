@@ -18,7 +18,9 @@ import {
   Plus,
   Trash2,
   Save,
-  Users
+  Users,
+  Key,
+  IdCard
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +34,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useTranslation } from '@/hooks/useTranslation';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { generateIdentity, getAvailableCountries, type GeneratedIdentity } from '@/lib/identityGenerator';
 
 interface Identity {
   id: string;
@@ -117,13 +120,17 @@ export function IdentityGeneratorView() {
   const [activeTab, setActiveTab] = useState('generator');
   const [selectedCountry, setSelectedCountry] = useState('US');
   const [includeFinancial, setIncludeFinancial] = useState(true);
-  const [currentIdentity, setCurrentIdentity] = useState<Identity | null>(null);
-  const [savedIdentities, setSavedIdentities] = useState<Identity[]>([]);
+  const [currentIdentity, setCurrentIdentity] = useState<GeneratedIdentity | null>(null);
+  const [savedIdentities, setSavedIdentities] = useState<GeneratedIdentity[]>([]);
+  
+  const countries = getAvailableCountries();
 
-  const generateIdentity = () => {
-    const identity = generateRandomIdentity(selectedCountry);
+  const handleGenerateIdentity = () => {
+    const identity = generateIdentity(selectedCountry);
     setCurrentIdentity(identity);
-    toast.success(isRTL ? 'تم توليد هوية جديدة!' : 'New identity generated!');
+    toast.success(isRTL ? 'تم توليد هوية جديدة!' : 'New identity generated!', {
+      description: `${identity.firstName} ${identity.lastName} - ${identity.city}, ${identity.country}`
+    });
   };
 
   const copyField = (value: string, field: string) => {
@@ -239,7 +246,7 @@ export function IdentityGeneratorView() {
                   <Switch checked={includeFinancial} onCheckedChange={setIncludeFinancial} />
                 </div>
 
-                <Button onClick={generateIdentity} className="w-full" size="lg">
+                <Button onClick={handleGenerateIdentity} className="w-full" size="lg">
                   <Sparkles className="w-4 h-4 mr-2" />
                   {isRTL ? 'توليد هوية جديدة' : 'Generate New Identity'}
                 </Button>

@@ -95,28 +95,42 @@ export function ProxyManagerView() {
 
   const handleTestProxy = async (chain: ProxyChain) => {
     setTestingProxy(chain.id);
+    const proxy = chain.proxies[0];
     
-    // Simulate proxy test
-    await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
-    
-    const success = Math.random() > 0.3; // 70% success rate for simulation
-    const speed = success ? Math.floor(50 + Math.random() * 200) : 0;
-    
-    const updatedProxies = chain.proxies.map(p => ({
-      ...p,
-      status: success ? 'active' as const : 'failed' as const,
-      speed,
-      lastTested: new Date(),
-    }));
+    try {
+      // Real proxy test using our library
+      const { testProxyWithCors } = await import('@/lib/proxyTester');
+      const result = await testProxyWithCors({
+        type: proxy.type,
+        host: proxy.host,
+        port: proxy.port,
+        username: proxy.username,
+        password: proxy.password
+      });
+      
+      const updatedProxies = chain.proxies.map(p => ({
+        ...p,
+        status: result.success ? 'active' as const : 'failed' as const,
+        speed: result.latency,
+        lastTested: new Date(),
+      }));
 
-    updateProxyChain(chain.id, { proxies: updatedProxies });
-    setTestingProxy(null);
-    
-    if (success) {
-      toast.success(isRTL ? `البروكسي يعمل - السرعة: ${speed}ms` : `Proxy working - Speed: ${speed}ms`);
-    } else {
-      toast.error(isRTL ? 'فشل الاتصال بالبروكسي' : 'Proxy connection failed');
+      updateProxyChain(chain.id, { proxies: updatedProxies });
+      
+      if (result.success) {
+        toast.success(isRTL ? `البروكسي يعمل - السرعة: ${result.latency}ms` : `Proxy working - Speed: ${result.latency}ms`, {
+          description: result.country ? `${result.city}, ${result.country}` : undefined
+        });
+      } else {
+        toast.error(isRTL ? 'فشل الاتصال بالبروكسي' : 'Proxy connection failed', {
+          description: result.error
+        });
+      }
+    } catch (err) {
+      toast.error(isRTL ? 'خطأ في الاختبار' : 'Test error');
     }
+    
+    setTestingProxy(null);
   };
 
   const handleTestAllProxies = async () => {
