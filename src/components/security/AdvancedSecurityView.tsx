@@ -63,8 +63,17 @@ interface SelfDestructRule {
 
 export function AdvancedSecurityView() {
   const { isRTL } = useTranslation();
-  const { profiles } = useAppStore();
+  const { 
+    profiles, 
+    deleteProfile, 
+    extensions, 
+    deleteExtension,
+    clearActivityLogs,
+    setLocked,
+    updateProfile 
+  } = useAppStore();
   const [activeTab, setActiveTab] = useState('panic');
+  const [isPanicExecuting, setIsPanicExecuting] = useState(false);
 
   // Panic Button Settings
   const [panicConfig, setPanicConfig] = useState({
@@ -118,11 +127,130 @@ export function AdvancedSecurityView() {
   const [newNote, setNewNote] = useState({ profileId: '', title: '', content: '', tags: '' });
   const [showNoteContent, setShowNoteContent] = useState<Record<string, boolean>>({});
 
-  const triggerPanic = () => {
+  // Real Panic Button execution
+  const triggerPanic = async () => {
+    if (!panicConfig.enabled) {
+      toast.error(isRTL ? 'زر الطوارئ معطل' : 'Panic button is disabled');
+      return;
+    }
+
+    setIsPanicExecuting(true);
+    
+    // Play alert sound if enabled
+    if (panicConfig.sound) {
+      try {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        setTimeout(() => oscillator.stop(), 200);
+      } catch (e) {
+        console.log('Audio not supported');
+      }
+    }
+
     toast.error(isRTL ? '⚠️ تم تفعيل زر الطوارئ!' : '⚠️ Panic Button Activated!', {
       description: isRTL ? 'جاري تنفيذ إجراءات الطوارئ...' : 'Executing emergency actions...',
       duration: 5000
     });
+
+    let actionsExecuted = 0;
+
+    // Close all profiles
+    if (panicConfig.actions.closeAllProfiles) {
+      const runningProfiles = profiles.filter(p => p.status === 'running');
+      for (const profile of runningProfiles) {
+        updateProfile(profile.id, { status: 'stopped' });
+        // If in Electron, actually stop the profile
+        if (window.electronAPI?.stopProfile) {
+          await window.electronAPI.stopProfile(profile.id);
+        }
+      }
+      actionsExecuted++;
+      toast.info(isRTL ? `تم إغلاق ${runningProfiles.length} بروفايل` : `Closed ${runningProfiles.length} profiles`);
+    }
+
+    // Delete all profiles
+    if (panicConfig.actions.deleteAllProfiles) {
+      const profileCount = profiles.length;
+      const profileIds = profiles.map(p => p.id);
+      for (const id of profileIds) {
+        deleteProfile(id);
+      }
+      actionsExecuted++;
+      toast.info(isRTL ? `تم حذف ${profileCount} بروفايل` : `Deleted ${profileCount} profiles`);
+    }
+
+    // Clear history/activity logs
+    if (panicConfig.actions.clearHistory) {
+      clearActivityLogs();
+      // Clear browser storage
+      try {
+        localStorage.removeItem('browser-manager-activity');
+        sessionStorage.clear();
+      } catch (e) {}
+      actionsExecuted++;
+      toast.info(isRTL ? 'تم مسح السجل' : 'History cleared');
+    }
+
+    // Clear cookies (clear local storage related to cookies)
+    if (panicConfig.actions.clearCookies) {
+      try {
+        // Clear all cookies-related data from localStorage
+        const keys = Object.keys(localStorage);
+        keys.forEach(key => {
+          if (key.includes('cookie') || key.includes('session')) {
+            localStorage.removeItem(key);
+          }
+        });
+      } catch (e) {}
+      actionsExecuted++;
+      toast.info(isRTL ? 'تم مسح الكوكيز' : 'Cookies cleared');
+    }
+
+    // Wipe extensions
+    if (panicConfig.actions.wipeExtensions) {
+      const extCount = extensions.length;
+      const extIds = extensions.map(e => e.id);
+      for (const id of extIds) {
+        deleteExtension(id);
+      }
+      actionsExecuted++;
+      toast.info(isRTL ? `تم حذف ${extCount} إضافة` : `Deleted ${extCount} extensions`);
+    }
+
+    // Lock app
+    if (panicConfig.actions.lockApp) {
+      setLocked(true);
+      actionsExecuted++;
+      toast.info(isRTL ? 'تم قفل التطبيق' : 'App locked');
+    }
+
+    // Factory reset (clear everything)
+    if (panicConfig.actions.factoryReset) {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+        // Reload the app
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } catch (e) {}
+      actionsExecuted++;
+      toast.warning(isRTL ? 'تم إعادة ضبط المصنع - سيتم إعادة تحميل التطبيق' : 'Factory reset - app will reload');
+    }
+
+    setIsPanicExecuting(false);
+    
+    toast.success(
+      isRTL ? `✅ تم تنفيذ ${actionsExecuted} إجراء طوارئ` : `✅ Executed ${actionsExecuted} emergency actions`,
+      { duration: 3000 }
+    );
   };
 
   const addSelfDestructRule = () => {
@@ -197,9 +325,16 @@ export function AdvancedSecurityView() {
         {/* Emergency Panic Button */}
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="lg" className="gap-2 animate-pulse">
+            <Button 
+              variant="destructive" 
+              size="lg" 
+              className="gap-2 animate-pulse"
+              disabled={isPanicExecuting}
+            >
               <Bomb className="w-5 h-5" />
-              {isRTL ? 'زر الطوارئ' : 'PANIC'}
+              {isPanicExecuting 
+                ? (isRTL ? 'جاري التنفيذ...' : 'Executing...') 
+                : (isRTL ? 'زر الطوارئ' : 'PANIC')}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
