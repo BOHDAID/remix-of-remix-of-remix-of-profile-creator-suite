@@ -105,8 +105,9 @@ export function ProfilesView() {
       if (!profile || profile.status === 'running') continue;
 
       try {
-        // Get extension paths based on autoLoadExtensions setting
-        const profileExtensions = settings.autoLoadExtensions
+        // Get extension paths based on profile's individual setting
+        const shouldLoadExtensions = profile.autoLoadExtensions ?? true;
+        const profileExtensions = shouldLoadExtensions
           ? extensions.filter(e => profile.extensions.includes(e.id) && e.enabled).map(e => e.path)
           : [];
 
@@ -299,59 +300,9 @@ export function ProfilesView() {
         </div>
       )}
 
-      {/* Running Profiles Control Bar */}
-      {runningCount > 0 && (
-        <div className="flex flex-wrap items-center gap-3 p-4 bg-success/10 border border-success/20 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Monitor className="w-5 h-5 text-success" />
-            <span className="text-sm font-medium text-success">
-              {runningCount} بروفايل يعمل
-            </span>
-          </div>
-          <div className="flex gap-2 mr-auto">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => handleTileWindows('grid')}
-              className="border-success/30 hover:bg-success/10"
-            >
-              <Grid3X3 className="w-4 h-4 ml-1" />
-              ترتيب شبكي
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => handleTileWindows('horizontal')}
-              className="border-success/30 hover:bg-success/10"
-            >
-              <LayoutGrid className="w-4 h-4 ml-1" />
-              ترتيب أفقي
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleMinimizeAll}
-              className="border-success/30 hover:bg-success/10"
-            >
-              <Minimize2 className="w-4 h-4 ml-1" />
-              تصغير الكل
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleRestoreAll}
-              className="border-success/30 hover:bg-success/10"
-            >
-              <Maximize2 className="w-4 h-4 ml-1" />
-              استعادة الكل
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Search & Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
+      {/* Search & Filters with Window Controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="البحث في البروفايلات..."
@@ -360,6 +311,44 @@ export function ProfilesView() {
             className="pr-10 bg-input"
           />
         </div>
+        
+        {/* Window Controls - Only show when profiles are running */}
+        {runningCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 border border-success/20 rounded-lg">
+            <Monitor className="w-4 h-4 text-success" />
+            <span className="text-xs font-medium text-success">{runningCount}</span>
+            <div className="w-px h-4 bg-success/30" />
+            <button
+              onClick={() => handleTileWindows('grid')}
+              className="p-1.5 rounded hover:bg-success/20 transition-colors"
+              title="ترتيب شبكي"
+            >
+              <Grid3X3 className="w-4 h-4 text-success" />
+            </button>
+            <button
+              onClick={() => handleTileWindows('horizontal')}
+              className="p-1.5 rounded hover:bg-success/20 transition-colors"
+              title="ترتيب أفقي"
+            >
+              <LayoutGrid className="w-4 h-4 text-success" />
+            </button>
+            <button
+              onClick={handleMinimizeAll}
+              className="p-1.5 rounded hover:bg-success/20 transition-colors"
+              title="تصغير الكل"
+            >
+              <Minimize2 className="w-4 h-4 text-success" />
+            </button>
+            <button
+              onClick={handleRestoreAll}
+              className="p-1.5 rounded hover:bg-success/20 transition-colors"
+              title="استعادة الكل"
+            >
+              <Maximize2 className="w-4 h-4 text-success" />
+            </button>
+          </div>
+        )}
+
         <div className="flex bg-muted rounded-lg p-1">
           <button
             onClick={() => setViewMode('grid')}

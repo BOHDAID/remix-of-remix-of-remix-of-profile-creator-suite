@@ -56,8 +56,9 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
     setLaunching(true);
 
     try {
-      // Get extension paths based on autoLoadExtensions setting
-      const profileExtensions = settings.autoLoadExtensions
+      // Get extension paths based on profile's autoLoadExtensions setting
+      const shouldLoadExtensions = profile.autoLoadExtensions ?? true;
+      const profileExtensions = shouldLoadExtensions
         ? extensions.filter(e => profile.extensions.includes(e.id) && e.enabled).map(e => e.path)
         : [];
 

@@ -48,6 +48,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
   const [userAgent, setUserAgent] = useState('');
   const [notes, setNotes] = useState('');
   const [fingerprint, setFingerprint] = useState<FingerprintSettings | undefined>(undefined);
+  const [autoLoadExtensions, setAutoLoadExtensions] = useState(true);
 
   useEffect(() => {
     if (editProfile) {
@@ -64,6 +65,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
       setUserAgent(editProfile.userAgent);
       setNotes(editProfile.notes);
       setFingerprint(editProfile.fingerprint);
+      setAutoLoadExtensions(editProfile.autoLoadExtensions ?? true);
     } else {
       resetForm();
     }
@@ -81,6 +83,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
     setUserAgent(settings.defaultUserAgent);
     setNotes('');
     setFingerprint(undefined);
+    setAutoLoadExtensions(true);
   };
 
   const handleSubmit = () => {
@@ -122,6 +125,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         userAgent: userAgent || settings.defaultUserAgent,
         notes,
         fingerprint,
+        autoLoadExtensions,
       });
       toast.success('تم تحديث البروفايل بنجاح');
     } else {
@@ -135,6 +139,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         createdAt: new Date(),
         notes,
         fingerprint,
+        autoLoadExtensions,
       };
       addProfile(newProfile);
       toast.success('تم إنشاء البروفايل بنجاح');
@@ -321,6 +326,27 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
           </TabsContent>
 
           <TabsContent value="extensions" className="space-y-4 mt-4">
+            {/* خيار التشغيل التلقائي للإضافات */}
+            <div className="flex items-center justify-between p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="flex items-center gap-3">
+                <Puzzle className="w-5 h-5 text-primary" />
+                <div>
+                  <Label htmlFor="autoLoadExtensions" className="cursor-pointer font-medium">
+                    تشغيل الإضافات تلقائياً
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    تشغيل الإضافات المحددة عند فتح هذا البروفايل
+                  </p>
+                </div>
+              </div>
+              <Checkbox
+                id="autoLoadExtensions"
+                checked={autoLoadExtensions}
+                onCheckedChange={(checked) => setAutoLoadExtensions(checked as boolean)}
+                className="h-5 w-5"
+              />
+            </div>
+
             {extensions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Puzzle className="w-12 h-12 mx-auto mb-3 opacity-50" />
