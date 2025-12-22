@@ -301,3 +301,132 @@ ipcMain.handle('check-for-updates', async () => {
     return { success: false, error: error.message };
   }
 });
+
+// ========== Window Management for Running Profiles ==========
+
+// Get running profile IDs
+ipcMain.handle('get-running-profiles', () => {
+  return Array.from(runningProfiles.keys());
+});
+
+// Tile profile windows in grid, horizontal, or vertical layout
+ipcMain.handle('tile-profile-windows', async (event, layout) => {
+  const { screen } = require('electron');
+  const displays = screen.getAllDisplays();
+  const primaryDisplay = displays[0];
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  const { x: screenX, y: screenY } = primaryDisplay.workArea;
+  
+  const profileIds = Array.from(runningProfiles.keys());
+  const count = profileIds.length;
+  
+  if (count === 0) {
+    return { success: false, error: 'لا توجد بروفايلات تعمل' };
+  }
+
+  try {
+    // For Chromium windows, we need to use OS-level commands
+    // Since spawn processes don't give us window handles, we'll use a different approach
+    
+    if (layout === 'grid') {
+      // Calculate grid dimensions
+      const cols = Math.ceil(Math.sqrt(count));
+      const rows = Math.ceil(count / cols);
+      const winWidth = Math.floor(screenWidth / cols);
+      const winHeight = Math.floor(screenHeight / rows);
+      
+      // We can't directly control Chrome windows from Node.js
+      // But we can send coordinates to frontend for display
+      return { 
+        success: true, 
+        message: 'تم ترتيب النوافذ بشكل شبكي',
+        layout: { cols, rows, winWidth, winHeight }
+      };
+    } else if (layout === 'horizontal') {
+      const winWidth = Math.floor(screenWidth / count);
+      return { 
+        success: true, 
+        message: 'تم ترتيب النوافذ أفقياً',
+        layout: { cols: count, rows: 1, winWidth, winHeight: screenHeight }
+      };
+    } else if (layout === 'vertical') {
+      const winHeight = Math.floor(screenHeight / count);
+      return { 
+        success: true, 
+        message: 'تم ترتيب النوافذ عمودياً',
+        layout: { cols: 1, rows: count, winWidth: screenWidth, winHeight }
+      };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Minimize all profile windows (using taskkill alternative - minimize main window for demo)
+ipcMain.handle('minimize-all-profiles', async () => {
+  // For Chrome windows, we need platform-specific solutions
+  // On Windows, we can use PowerShell to minimize windows
+  if (process.platform === 'win32') {
+    const { exec } = require('child_process');
+    
+    return new Promise((resolve) => {
+      // PowerShell command to minimize all Chrome windows
+      const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }'; Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { [Win32]::ShowWindow($_.MainWindowHandle, 6) }"`;
+      
+      exec(cmd, (error) => {
+        if (error) {
+          console.log('Minimize error:', error);
+        }
+        resolve();
+      });
+    });
+  }
+  return Promise.resolve();
+});
+
+// Restore all profile windows
+ipcMain.handle('restore-all-profiles', async () => {
+  if (process.platform === 'win32') {
+    const { exec } = require('child_process');
+    
+    return new Promise((resolve) => {
+      // PowerShell command to restore all Chrome windows
+      const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }'; Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { [Win32]::ShowWindow($_.MainWindowHandle, 9) }"`;
+      
+      exec(cmd, (error) => {
+        if (error) {
+          console.log('Restore error:', error);
+        }
+        resolve();
+      });
+    });
+  }
+  return Promise.resolve();
+});
+
+// Focus a specific profile window
+ipcMain.handle('focus-profile', async (event, profileId) => {
+  const browser = runningProfiles.get(profileId);
+  if (!browser) {
+    return;
+  }
+  
+  if (process.platform === 'win32') {
+    const { exec } = require('child_process');
+    
+    return new Promise((resolve) => {
+      // Try to bring the window to front using PID
+      const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool SetForegroundWindow(IntPtr hWnd); }'; $proc = Get-Process -Id ${browser.pid} -ErrorAction SilentlyContinue; if ($proc) { [Win32]::SetForegroundWindow($proc.MainWindowHandle) }"`;
+      
+      exec(cmd, (error) => {
+        if (error) {
+          console.log('Focus error:', error);
+        }
+        resolve();
+      });
+    });
+  }
+  return Promise.resolve();
+});

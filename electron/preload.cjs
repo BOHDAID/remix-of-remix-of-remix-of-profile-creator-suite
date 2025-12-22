@@ -16,6 +16,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopProfile: (profileId) => ipcRenderer.invoke('stop-profile', profileId),
   onProfileClosed: (callback) => ipcRenderer.on('profile-closed', (_, profileId) => callback(profileId)),
   
+  // Browser window management
+  tileProfileWindows: (layout) => ipcRenderer.invoke('tile-profile-windows', layout),
+  minimizeAllProfiles: () => ipcRenderer.invoke('minimize-all-profiles'),
+  restoreAllProfiles: () => ipcRenderer.invoke('restore-all-profiles'),
+  focusProfile: (profileId) => ipcRenderer.invoke('focus-profile', profileId),
+  getRunningProfiles: () => ipcRenderer.invoke('get-running-profiles'),
+  
   // Utilities
   getAppPaths: () => ipcRenderer.invoke('get-app-paths'),
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
