@@ -72,8 +72,8 @@ interface AppState {
   addLeakTestResult: (result: LeakTestResult) => void;
   
   // UI State
-  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint' | 'collaboration';
-  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint' | 'collaboration') => void;
+  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint';
+  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint') => void;
 }
 
 const defaultSettings: AppSettings = {
