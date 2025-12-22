@@ -14,6 +14,9 @@ import { LeakTestView } from '@/components/leaktest/LeakTestView';
 import { AIHubView } from '@/components/ai/AIHubView';
 import { IdentityGeneratorView } from '@/components/identity/IdentityGeneratorView';
 import { AdvancedFingerprintView } from '@/components/fingerprint/AdvancedFingerprintView';
+import { AdvancedSecurityView } from '@/components/security/AdvancedSecurityView';
+import { AdvancedProxyView } from '@/components/proxy/AdvancedProxyView';
+import { CollaborationView } from '@/components/collaboration/CollaborationView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -51,9 +54,9 @@ export default function Index() {
       case 'updates':
         return <UpdatesView />;
       case 'security':
-        return <SecurityView />;
+        return <AdvancedSecurityView />;
       case 'proxy':
-        return <ProxyManagerView />;
+        return <AdvancedProxyView />;
       case 'backup':
         return <BackupView />;
       case 'schedule':
@@ -67,7 +70,7 @@ export default function Index() {
       case 'fingerprint':
         return <AdvancedFingerprintView />;
       case 'collaboration':
-        return <div className="p-6"><h1 className="text-2xl font-bold">{isRTL ? 'التعاون الجماعي - قريباً' : 'Team Collaboration - Coming Soon'}</h1></div>;
+        return <CollaborationView />;
       default:
         return <DashboardView />;
     }
