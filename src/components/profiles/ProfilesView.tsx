@@ -116,7 +116,8 @@ export function ProfilesView() {
           proxy: profile.proxy,
           extensions: profileExtensions,
           userAgent: profile.userAgent || settings.defaultUserAgent,
-          profileId: profile.id
+          profileId: profile.id,
+          fingerprint: profile.fingerprint
         });
 
         if (result?.success) {

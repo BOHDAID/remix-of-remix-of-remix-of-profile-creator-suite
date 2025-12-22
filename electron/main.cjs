@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -7,6 +7,126 @@ const { autoUpdater } = require('electron-updater');
 let mainWindow;
 // Store running browser processes by profile ID
 const runningProfiles = new Map();
+
+// Create fingerprint injection extension
+function createFingerprintScript(fingerprint, userDataDir) {
+  try {
+    const extensionDir = path.join(userDataDir, 'fingerprint-extension');
+    
+    if (!fs.existsSync(extensionDir)) {
+      fs.mkdirSync(extensionDir, { recursive: true });
+    }
+    
+    // manifest.json
+    const manifest = {
+      manifest_version: 3,
+      name: "Fingerprint Spoof",
+      version: "1.0",
+      content_scripts: [{
+        matches: ["<all_urls>"],
+        js: ["content.js"],
+        run_at: "document_start",
+        all_frames: true
+      }]
+    };
+    
+    fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    
+    // content.js - inject fingerprint spoofing
+    const contentScript = `
+(function() {
+  const fp = ${JSON.stringify(fingerprint)};
+  
+  // Override navigator properties
+  const navigatorProps = {
+    hardwareConcurrency: { value: fp.cpuCores || fp.hardwareConcurrency },
+    deviceMemory: { value: fp.deviceMemory },
+    platform: { value: fp.platform },
+    language: { value: fp.language },
+    languages: { value: fp.languages || [fp.language] }
+  };
+  
+  for (const [key, descriptor] of Object.entries(navigatorProps)) {
+    try {
+      Object.defineProperty(navigator, key, { ...descriptor, configurable: true });
+    } catch (e) {}
+  }
+  
+  // Override screen properties
+  const screenProps = {
+    width: { value: fp.screenWidth },
+    height: { value: fp.screenHeight },
+    availWidth: { value: fp.screenWidth },
+    availHeight: { value: fp.screenHeight - 40 },
+    colorDepth: { value: fp.colorDepth || 24 },
+    pixelDepth: { value: fp.colorDepth || 24 }
+  };
+  
+  for (const [key, descriptor] of Object.entries(screenProps)) {
+    try {
+      Object.defineProperty(screen, key, { ...descriptor, configurable: true });
+    } catch (e) {}
+  }
+  
+  // Override devicePixelRatio
+  try {
+    Object.defineProperty(window, 'devicePixelRatio', { value: fp.pixelRatio || 1, configurable: true });
+  } catch (e) {}
+  
+  // Override WebGL
+  const getParameterProxyHandler = {
+    apply: function(target, thisArg, args) {
+      const param = args[0];
+      const gl = thisArg;
+      
+      // UNMASKED_VENDOR_WEBGL
+      if (param === 37445) {
+        return fp.webglVendor || fp.gpuVendor;
+      }
+      // UNMASKED_RENDERER_WEBGL
+      if (param === 37446) {
+        return fp.webglRenderer || fp.gpu;
+      }
+      
+      return target.apply(thisArg, args);
+    }
+  };
+  
+  // Hook WebGL
+  const hookWebGL = (proto) => {
+    if (proto && proto.getParameter) {
+      proto.getParameter = new Proxy(proto.getParameter, getParameterProxyHandler);
+    }
+  };
+  
+  hookWebGL(WebGLRenderingContext.prototype);
+  if (typeof WebGL2RenderingContext !== 'undefined') {
+    hookWebGL(WebGL2RenderingContext.prototype);
+  }
+  
+  // Override timezone
+  if (fp.timezone) {
+    const originalDateTimeFormat = Intl.DateTimeFormat;
+    Intl.DateTimeFormat = function(locales, options) {
+      options = options || {};
+      options.timeZone = fp.timezone;
+      return new originalDateTimeFormat(locales, options);
+    };
+    Intl.DateTimeFormat.prototype = originalDateTimeFormat.prototype;
+  }
+  
+  console.log('[Fingerprint] Spoofing applied:', fp.gpu, fp.cpu);
+})();
+`;
+    
+    fs.writeFileSync(path.join(extensionDir, 'content.js'), contentScript);
+    
+    return extensionDir;
+  } catch (error) {
+    console.error('Error creating fingerprint extension:', error);
+    return null;
+  }
+}
 
 // Auto-updater configuration
 autoUpdater.autoDownload = true;
@@ -155,7 +275,7 @@ ipcMain.handle('select-chromium-path', async () => {
 
 // Launch browser profile
 ipcMain.handle('launch-profile', async (event, profileData) => {
-  const { chromiumPath, proxy, extensions, userAgent, profileId } = profileData;
+  const { chromiumPath, proxy, extensions, userAgent, profileId, fingerprint } = profileData;
   
   if (!chromiumPath || !fs.existsSync(chromiumPath)) {
     return { success: false, error: 'مسار Chromium غير صحيح' };
@@ -194,6 +314,28 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     const extensionPaths = extensions.filter(ext => fs.existsSync(ext)).join(',');
     if (extensionPaths) {
       args.push(`--load-extension=${extensionPaths}`);
+    }
+  }
+
+  // Apply fingerprint settings
+  if (fingerprint) {
+    // Screen size
+    if (fingerprint.screenWidth && fingerprint.screenHeight) {
+      args.push(`--window-size=${fingerprint.screenWidth},${fingerprint.screenHeight}`);
+    }
+    
+    // Language
+    if (fingerprint.language) {
+      args.push(`--lang=${fingerprint.language}`);
+    }
+    
+    // Timezone - requires TZ environment variable
+    
+    // Create fingerprint injection script
+    const fingerprintScript = createFingerprintScript(fingerprint, userDataDir);
+    if (fingerprintScript) {
+      // The script will be loaded as an extension
+      args.push(`--load-extension=${fingerprintScript}${extensions && extensions.length > 0 ? ',' + extensions.filter(ext => fs.existsSync(ext)).join(',') : ''}`);
     }
   }
 
