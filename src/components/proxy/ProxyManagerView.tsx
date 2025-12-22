@@ -15,7 +15,8 @@ import {
   Clock,
   Loader2,
   Zap,
-  Globe
+  Globe,
+  Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProxySettings, ProxyChain } from '@/types';
@@ -34,12 +35,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { BulkProxyImport } from './BulkProxyImport';
 
 export function ProxyManagerView() {
   const { proxyChains, addProxyChain, updateProxyChain, deleteProxyChain } = useAppStore();
   const { t, isRTL } = useTranslation();
   
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [testingProxy, setTestingProxy] = useState<string | null>(null);
   const [testingAll, setTestingAll] = useState(false);
   
@@ -158,10 +161,16 @@ export function ProxyManagerView() {
           </h1>
           <p className="text-muted-foreground mt-1">{t('proxySettings')}</p>
         </div>
-        <Button variant="glow" onClick={() => setShowAddDialog(true)}>
-          <Plus className="w-4 h-4" />
-          {isRTL ? 'إضافة بروكسي' : 'Add Proxy'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowBulkImport(true)}>
+            <Upload className="w-4 h-4" />
+            {isRTL ? 'استيراد بالجملة' : 'Bulk Import'}
+          </Button>
+          <Button variant="glow" onClick={() => setShowAddDialog(true)}>
+            <Plus className="w-4 h-4" />
+            {isRTL ? 'إضافة بروكسي' : 'Add Proxy'}
+          </Button>
+        </div>
       </div>
 
       {/* Test All Button */}
@@ -385,6 +394,9 @@ export function ProxyManagerView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <BulkProxyImport open={showBulkImport} onClose={() => setShowBulkImport(false)} />
     </div>
   );
 }
