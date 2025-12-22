@@ -4,6 +4,7 @@ import { ProfilesView } from '@/components/profiles/ProfilesView';
 import { ExtensionsView } from '@/components/extensions/ExtensionsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { LicenseView } from '@/components/license/LicenseView';
+import { LicenseAdminView } from '@/components/license/LicenseAdminView';
 import { UpdatesView } from '@/components/updates/UpdatesView';
 import { SecurityView } from '@/components/security/SecurityView';
 import { ProxyManagerView } from '@/components/proxy/ProxyManagerView';
@@ -48,6 +49,8 @@ export default function Index() {
         return <ProxyManagerView />;
       case 'backup':
         return <BackupView />;
+      case 'license-admin':
+        return <LicenseAdminView />;
       default:
         return <ProfilesView />;
     }
