@@ -1,6 +1,6 @@
 {
-  "appId": "com.browsermanager.app",
-  "productName": "Browser Manager",
+  "appId": "com.profilemanagerpro.app",
+  "productName": "Profile Manager Pro",
   "electronVersion": "33.0.0",
   "extraMetadata": {
     "main": "electron/main.cjs"
@@ -31,7 +31,8 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "installerLanguages": ["ar", "en_US"]
+    "installerLanguages": ["ar", "en_US"],
+    "shortcutName": "Profile Manager Pro"
   },
   "mac": {
     "target": ["dmg"],

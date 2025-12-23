@@ -76,8 +76,8 @@ export default function Index() {
   return (
     <>
       <Helmet>
-        <title>Browser Manager - {isRTL ? 'إدارة المتصفحات' : 'Profile Manager'}</title>
-        <meta name="description" content={isRTL ? 'تطبيق إدارة بروفايلات المتصفح مع دعم البروكسي والملحقات' : 'Browser profile manager with proxy and extension support'} />
+        <title>Profile Manager Pro - {isRTL ? 'إدارة المتصفحات الاحترافية' : 'Professional Browser Manager'}</title>
+        <meta name="description" content={isRTL ? 'تطبيق احترافي لإدارة بروفايلات المتصفح مع دعم البروكسي وتزوير البصمة الرقمية' : 'Professional browser profile manager with proxy and fingerprint spoofing support'} />
       </Helmet>
       
       <div className="flex flex-col min-h-screen bg-background">

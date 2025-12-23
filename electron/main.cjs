@@ -265,7 +265,8 @@ function createWindow() {
     minHeight: 700,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0a0f1a',
+    backgroundColor: '#0d1117',
+    title: 'Profile Manager Pro',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

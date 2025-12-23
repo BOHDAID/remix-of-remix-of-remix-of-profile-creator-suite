@@ -234,7 +234,7 @@ export const useAppStore = create<AppState>()(
       setActiveView: (view) => set({ activeView: view }),
     }),
     {
-      name: 'browser-manager-storage',
+      name: 'profile-manager-pro-storage',
     }
   )
 );
