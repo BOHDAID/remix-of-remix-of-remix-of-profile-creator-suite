@@ -712,27 +712,58 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
   
   // Helper function to add extension if exists
   function addBuiltInExtension(folderName) {
-    const devPath = path.join(__dirname, '..', 'public', 'extensions', folderName);
-    const prodPath = path.join(process.resourcesPath || '', 'public', 'extensions', folderName);
+    // Try multiple possible paths for the extension
+    const possiblePaths = [
+      // Development paths
+      path.join(__dirname, '..', 'public', 'extensions', folderName),
+      path.join(process.cwd(), 'public', 'extensions', folderName),
+      // Production paths
+      path.join(process.resourcesPath || '', 'public', 'extensions', folderName),
+      path.join(app.getAppPath(), 'public', 'extensions', folderName),
+      path.join(app.getAppPath(), 'dist', 'extensions', folderName),
+      // Packaged app paths
+      path.join(process.resourcesPath || '', 'app', 'public', 'extensions', folderName),
+      path.join(process.resourcesPath || '', 'app.asar.unpacked', 'public', 'extensions', folderName),
+    ];
     
-    if (fs.existsSync(devPath)) {
-      builtInExtensions.push(devPath);
-    } else if (fs.existsSync(prodPath)) {
-      builtInExtensions.push(prodPath);
+    for (const extPath of possiblePaths) {
+      if (fs.existsSync(extPath)) {
+        // Verify manifest.json exists
+        const manifestPath = path.join(extPath, 'manifest.json');
+        if (fs.existsSync(manifestPath)) {
+          console.log(`[Extensions] ✓ Found ${folderName} at: ${extPath}`);
+          builtInExtensions.push(extPath);
+          return;
+        }
+      }
     }
+    
+    console.warn(`[Extensions] ✗ Could not find ${folderName} in any path`);
+    console.warn('[Extensions] Searched paths:', possiblePaths);
   }
   
   // Add all built-in extensions
+  console.log('[Extensions] Loading built-in extensions...');
   addBuiltInExtension('auto-login');        // تسجيل الدخول التلقائي
   addBuiltInExtension('session-capture');   // التقاط الجلسات
   addBuiltInExtension('captcha-solver');    // حل CAPTCHA
+  
+  console.log(`[Extensions] Found ${builtInExtensions.length} built-in extensions`);
   
   // Collect all extension paths
   let allExtensionPaths = [...builtInExtensions];
   
   // Add user-specified extensions
   if (extensions && extensions.length > 0) {
-    const validUserExtensions = extensions.filter(ext => fs.existsSync(ext));
+    const validUserExtensions = extensions.filter(ext => {
+      const exists = fs.existsSync(ext);
+      if (exists) {
+        console.log(`[Extensions] ✓ User extension: ${ext}`);
+      } else {
+        console.warn(`[Extensions] ✗ User extension not found: ${ext}`);
+      }
+      return exists;
+    });
     allExtensionPaths = allExtensionPaths.concat(validUserExtensions);
   }
 
@@ -755,12 +786,16 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     if (fingerprintScript) {
       // Add fingerprint extension to the list
       allExtensionPaths.unshift(fingerprintScript);
+      console.log(`[Extensions] ✓ Fingerprint extension created at: ${fingerprintScript}`);
     }
   }
   
   // Add all extensions to args
   if (allExtensionPaths.length > 0) {
     args.push(`--load-extension=${allExtensionPaths.join(',')}`);
+    console.log(`[Extensions] Loading ${allExtensionPaths.length} total extensions`);
+  } else {
+    console.warn('[Extensions] No extensions to load!');
   }
 
   try {
