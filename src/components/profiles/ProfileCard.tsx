@@ -90,9 +90,18 @@ export function ProfileCard({ profile, onEdit, onClone }: ProfileCardProps) {
     try {
       // Get extension paths based on profile's autoLoadExtensions setting
       const shouldLoadExtensions = profile.autoLoadExtensions ?? true;
-      const profileExtensions = shouldLoadExtensions
+      let profileExtensions = shouldLoadExtensions
         ? extensions.filter(e => profile.extensions.includes(e.id) && e.enabled).map(e => e.path)
         : [];
+
+      // Add CAPTCHA solver extension if enabled
+      if (autoCaptcha) {
+        const captchaSolverPath = 'extensions/captcha-solver';
+        if (!profileExtensions.includes(captchaSolverPath)) {
+          profileExtensions = [...profileExtensions, captchaSolverPath];
+        }
+        toast.info('تم تحميل إضافة حل CAPTCHA الذكي');
+      }
 
       const result = await electronAPI?.launchProfile({
         chromiumPath: settings.chromiumPath,
