@@ -40,8 +40,7 @@ import { toast } from 'sonner';
 import { 
   universalSessionService, 
   UniversalSession, 
-  LoginCredential,
-  createMockSessions 
+  LoginCredential
 } from '@/lib/universalSessionCapture';
 
 export function SessionManagerView() {
@@ -77,15 +76,8 @@ export function SessionManagerView() {
   }, [profiles]);
 
   const loadData = () => {
-    // Get real sessions or create mock for demo
-    let allSessions = universalSessionService.getAllSessions();
-    
-    if (allSessions.length === 0 && profiles.length > 0) {
-      // Create mock sessions for demo
-      createMockSessions(profiles[0].id, 15);
-      allSessions = universalSessionService.getAllSessions();
-    }
-    
+    // Get only real sessions - no mock data
+    const allSessions = universalSessionService.getAllSessions();
     setSessions(allSessions);
     setCredentials(universalSessionService.getAllCredentials());
     setStats(universalSessionService.getStats());
