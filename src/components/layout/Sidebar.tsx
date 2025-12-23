@@ -26,6 +26,7 @@ export function Sidebar() {
     { id: 'behavioral' as const, label: isRTL ? 'المحاكاة' : 'Behavioral', icon: MousePointer2 },
     { id: 'session' as const, label: isRTL ? 'الجلسات' : 'Sessions', icon: Cookie },
     { id: 'aiHub' as const, label: isRTL ? 'مركز AI' : 'AI Hub', icon: Brain },
+    { id: 'captcha' as const, label: isRTL ? 'حل CAPTCHA' : 'CAPTCHA Solver', icon: Bot },
     { id: 'identity' as const, label: isRTL ? 'الهويات' : 'Identity', icon: User },
     { id: 'fingerprint' as const, label: isRTL ? 'البصمة' : 'Fingerprint', icon: Fingerprint },
     { id: 'extensions' as const, label: t('extensions'), icon: Puzzle },
