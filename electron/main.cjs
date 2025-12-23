@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, session } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -7,6 +7,8 @@ const { autoUpdater } = require('electron-updater');
 let mainWindow;
 // Store running browser processes by profile ID
 const runningProfiles = new Map();
+// Store captured sessions
+const capturedSessions = new Map();
 
 // Create fingerprint injection extension
 function createFingerprintScript(fingerprint, userDataDir) {
@@ -739,4 +741,198 @@ ipcMain.handle('focus-profile', async (event, profileId) => {
     });
   }
   return Promise.resolve();
+});
+
+// ========== Real Session Capture System ==========
+
+// Capture session from running profile
+ipcMain.handle('capture-profile-session', async (event, { profileId, url }) => {
+  try {
+    const userDataDir = path.join(app.getPath('userData'), 'profiles', profileId);
+    const cookiesPath = path.join(userDataDir, 'Default', 'Cookies');
+    const localStoragePath = path.join(userDataDir, 'Default', 'Local Storage', 'leveldb');
+    
+    // Read cookies from Chrome's cookie database (SQLite)
+    let cookies = [];
+    let localStorage = {};
+    
+    // Try to read cookies file
+    if (fs.existsSync(cookiesPath)) {
+      try {
+        // For now, we'll get cookies from the session partition
+        const profileSession = session.fromPartition(`persist:profile-${profileId}`);
+        cookies = await profileSession.cookies.get({});
+      } catch (e) {
+        console.log('Could not read cookies from session:', e);
+      }
+    }
+    
+    // Parse domain from URL
+    let domain = 'unknown';
+    let siteName = 'Unknown Site';
+    try {
+      const urlObj = new URL(url || 'https://example.com');
+      domain = urlObj.hostname;
+      siteName = domain.replace('www.', '').split('.')[0];
+      siteName = siteName.charAt(0).toUpperCase() + siteName.slice(1);
+    } catch (e) {}
+    
+    const sessionData = {
+      id: `session-${profileId}-${Date.now()}`,
+      profileId,
+      domain,
+      siteName,
+      url: url || '',
+      cookies: cookies.map(c => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        expires: c.expirationDate,
+        secure: c.secure,
+        httpOnly: c.httpOnly,
+        sameSite: c.sameSite
+      })),
+      localStorage: localStorage,
+      sessionStorage: {},
+      tokens: [],
+      capturedAt: new Date().toISOString(),
+      status: 'active'
+    };
+    
+    // Detect tokens from cookies
+    const tokenPatterns = ['token', 'auth', 'session', 'jwt', 'access', 'refresh', 'bearer', 'api_key', 'sid'];
+    sessionData.tokens = cookies
+      .filter(c => tokenPatterns.some(p => c.name.toLowerCase().includes(p)))
+      .map(c => ({
+        type: c.name.toLowerCase().includes('jwt') ? 'jwt' : 
+              c.name.toLowerCase().includes('bearer') ? 'bearer' : 
+              c.name.toLowerCase().includes('session') ? 'session' : 'auth',
+        name: c.name,
+        value: c.value,
+        maskedValue: c.value.substring(0, 8) + '...' + c.value.substring(c.value.length - 4),
+        source: 'cookie'
+      }));
+    
+    // Store the session
+    capturedSessions.set(sessionData.id, sessionData);
+    
+    // Save to file for persistence
+    const sessionsFile = path.join(app.getPath('userData'), 'captured-sessions.json');
+    let allSessions = [];
+    if (fs.existsSync(sessionsFile)) {
+      try {
+        allSessions = JSON.parse(fs.readFileSync(sessionsFile, 'utf-8'));
+      } catch (e) {}
+    }
+    allSessions.push(sessionData);
+    fs.writeFileSync(sessionsFile, JSON.stringify(allSessions, null, 2));
+    
+    // Notify renderer
+    mainWindow?.webContents.send('session-captured', sessionData);
+    
+    return { success: true, session: sessionData };
+  } catch (error) {
+    console.error('Error capturing session:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all captured sessions
+ipcMain.handle('get-captured-sessions', async () => {
+  try {
+    const sessionsFile = path.join(app.getPath('userData'), 'captured-sessions.json');
+    if (fs.existsSync(sessionsFile)) {
+      const sessions = JSON.parse(fs.readFileSync(sessionsFile, 'utf-8'));
+      return { success: true, sessions };
+    }
+    return { success: true, sessions: [] };
+  } catch (error) {
+    return { success: false, error: error.message, sessions: [] };
+  }
+});
+
+// Delete a captured session
+ipcMain.handle('delete-captured-session', async (event, sessionId) => {
+  try {
+    const sessionsFile = path.join(app.getPath('userData'), 'captured-sessions.json');
+    if (fs.existsSync(sessionsFile)) {
+      let sessions = JSON.parse(fs.readFileSync(sessionsFile, 'utf-8'));
+      sessions = sessions.filter(s => s.id !== sessionId);
+      fs.writeFileSync(sessionsFile, JSON.stringify(sessions, null, 2));
+    }
+    capturedSessions.delete(sessionId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete all captured sessions
+ipcMain.handle('delete-all-sessions', async () => {
+  try {
+    const sessionsFile = path.join(app.getPath('userData'), 'captured-sessions.json');
+    if (fs.existsSync(sessionsFile)) {
+      fs.writeFileSync(sessionsFile, '[]');
+    }
+    capturedSessions.clear();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Capture cookies from a specific URL in running profile
+ipcMain.handle('capture-url-cookies', async (event, { profileId, url }) => {
+  try {
+    const profileSession = session.fromPartition(`persist:profile-${profileId}`);
+    const urlObj = new URL(url);
+    
+    // Get cookies for this specific URL
+    const cookies = await profileSession.cookies.get({ url });
+    
+    return { 
+      success: true, 
+      cookies: cookies.map(c => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        expires: c.expirationDate,
+        secure: c.secure,
+        httpOnly: c.httpOnly
+      }))
+    };
+  } catch (error) {
+    return { success: false, error: error.message, cookies: [] };
+  }
+});
+
+// Import session (inject cookies into profile)
+ipcMain.handle('inject-session', async (event, { profileId, sessionData }) => {
+  try {
+    const profileSession = session.fromPartition(`persist:profile-${profileId}`);
+    
+    // Inject cookies
+    for (const cookie of sessionData.cookies || []) {
+      try {
+        await profileSession.cookies.set({
+          url: `https://${cookie.domain.replace(/^\./, '')}`,
+          name: cookie.name,
+          value: cookie.value,
+          domain: cookie.domain,
+          path: cookie.path || '/',
+          secure: cookie.secure !== false,
+          httpOnly: cookie.httpOnly !== false,
+          expirationDate: cookie.expires || (Date.now() / 1000 + 86400 * 30)
+        });
+      } catch (e) {
+        console.log('Could not set cookie:', cookie.name, e);
+      }
+    }
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });

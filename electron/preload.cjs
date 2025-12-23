@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () => ipcRenderer.invoke('install-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   
+  // ========== Session Capture API ==========
+  captureProfileSession: (profileId, url) => ipcRenderer.invoke('capture-profile-session', { profileId, url }),
+  getCapturedSessions: () => ipcRenderer.invoke('get-captured-sessions'),
+  deleteCapturedSession: (sessionId) => ipcRenderer.invoke('delete-captured-session', sessionId),
+  deleteAllSessions: () => ipcRenderer.invoke('delete-all-sessions'),
+  captureUrlCookies: (profileId, url) => ipcRenderer.invoke('capture-url-cookies', { profileId, url }),
+  injectSession: (profileId, sessionData) => ipcRenderer.invoke('inject-session', { profileId, sessionData }),
+  onSessionCaptured: (callback) => ipcRenderer.on('session-captured', (_, session) => callback(session)),
+  
   // Platform info
   platform: process.platform,
   isElectron: true

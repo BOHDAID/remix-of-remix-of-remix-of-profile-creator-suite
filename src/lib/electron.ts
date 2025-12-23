@@ -1,7 +1,52 @@
 // Type definitions for Electron API
-// Updated to support fingerprint settings
+// Updated to support fingerprint settings and session capture
 
 import { FingerprintSettings } from '@/types';
+
+// Session capture types
+export interface CapturedSession {
+  id: string;
+  profileId: string;
+  domain: string;
+  siteName: string;
+  url: string;
+  cookies: SessionCookie[];
+  localStorage: Record<string, string>;
+  sessionStorage: Record<string, string>;
+  tokens: SessionToken[];
+  capturedAt: string;
+  status: string;
+}
+
+export interface SessionCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires?: number;
+  secure: boolean;
+  httpOnly: boolean;
+}
+
+export interface SessionToken {
+  type: string;
+  name: string;
+  value: string;
+  maskedValue: string;
+  source: string;
+}
+
+export interface SessionCaptureResult {
+  success: boolean;
+  session?: CapturedSession;
+  error?: string;
+}
+
+export interface GetSessionsResult {
+  success: boolean;
+  sessions: CapturedSession[];
+  error?: string;
+}
 
 export interface ElectronAPI {
   // Window controls
@@ -37,6 +82,15 @@ export interface ElectronAPI {
   onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => void;
   installUpdate: () => Promise<void>;
   checkForUpdates: () => Promise<CheckUpdateResult>;
+  
+  // Session Capture API
+  captureProfileSession: (profileId: string, url?: string) => Promise<SessionCaptureResult>;
+  getCapturedSessions: () => Promise<GetSessionsResult>;
+  deleteCapturedSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  deleteAllSessions: () => Promise<{ success: boolean; error?: string }>;
+  captureUrlCookies: (profileId: string, url: string) => Promise<{ success: boolean; cookies: SessionCookie[]; error?: string }>;
+  injectSession: (profileId: string, sessionData: CapturedSession) => Promise<{ success: boolean; error?: string }>;
+  onSessionCaptured: (callback: (session: CapturedSession) => void) => void;
   
   // Platform info
   platform: string;
@@ -114,13 +168,8 @@ export const isElectron = (): boolean => {
   return typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 };
 
-// Get Electron API with fallbacks for web
-export const getElectronAPI = (): ElectronAPI | null => {
-  if (isElectron()) {
-    return window.electronAPI!;
-  }
-  return null;
-};
+// Get Electron API
+export const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
 
 // Web fallback functions
 export const webFallback = {
@@ -129,3 +178,28 @@ export const webFallback = {
     return null;
   }
 };
+
+// Generate session injection script
+export function generateSessionInjectionScript(session: CapturedSession): string {
+  const cookieScript = session.cookies.map(c => 
+    `document.cookie = "${c.name}=${c.value}; domain=${c.domain}; path=${c.path || '/'}${c.secure ? '; secure' : ''}";`
+  ).join('\n');
+  
+  const localStorageScript = Object.entries(session.localStorage || {}).map(([k, v]) =>
+    `localStorage.setItem("${k}", ${JSON.stringify(v)});`
+  ).join('\n');
+  
+  return `// Session Injection Script for ${session.siteName}
+// Domain: ${session.domain}
+// Captured: ${session.capturedAt}
+
+(function() {
+  // Inject cookies
+  ${cookieScript || '// No cookies'}
+  
+  // Inject localStorage
+  ${localStorageScript || '// No localStorage'}
+  
+  console.log('[Session Injected] ${session.siteName} - ${session.cookies.length} cookies, ${Object.keys(session.localStorage || {}).length} localStorage items');
+})();`;
+}

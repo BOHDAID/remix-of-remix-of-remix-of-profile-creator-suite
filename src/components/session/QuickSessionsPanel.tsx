@@ -24,55 +24,67 @@ import {
   Download,
   Trash2,
   Search,
-  ExternalLink,
   MoreVertical,
   CheckCircle2,
   AlertTriangle,
   Clock,
   Key,
   RefreshCw,
-  FileJson,
-  Play
+  Play,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { 
-  universalSessionService, 
-  UniversalSession,
-  createMockSessions 
-} from '@/lib/universalSessionCapture';
+import { isElectron, electronAPI, CapturedSession, generateSessionInjectionScript } from '@/lib/electron';
 import { useAppStore } from '@/stores/appStore';
 
 export function QuickSessionsPanel() {
   const { profiles } = useAppStore();
-  const [sessions, setSessions] = useState<UniversalSession[]>([]);
+  const [sessions, setSessions] = useState<CapturedSession[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    loadSessions();
-  }, [profiles]);
-
-  const loadSessions = () => {
-    let allSessions = universalSessionService.getAllSessions();
-    
-    // Create mock sessions if empty for demo
-    if (allSessions.length === 0) {
-      const profileId = profiles.length > 0 ? profiles[0].id : 'demo-profile';
-      createMockSessions(profileId, 25);
-      allSessions = universalSessionService.getAllSessions();
+    if (isOpen) {
+      loadSessions();
     }
-    
-    setSessions(allSessions);
+  }, [isOpen]);
+
+  // Listen for new session captures
+  useEffect(() => {
+    if (isElectron && electronAPI?.onSessionCaptured) {
+      electronAPI.onSessionCaptured((session: CapturedSession) => {
+        setSessions(prev => [session, ...prev]);
+        toast.success(`تم التقاط جلسة ${session.siteName}`, {
+          description: `${session.cookies.length} كوكيز، ${session.tokens.length} توكنات`
+        });
+      });
+    }
+  }, []);
+
+  const loadSessions = async () => {
+    setIsLoading(true);
+    try {
+      if (isElectron && electronAPI?.getCapturedSessions) {
+        const result = await electronAPI.getCapturedSessions();
+        if (result.success) {
+          setSessions(result.sessions || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+    }
+    setIsLoading(false);
   };
 
   const refreshSessions = () => {
-    universalSessionService.refreshAllSessionStatus();
     loadSessions();
     toast.success('تم تحديث الجلسات');
   };
 
-  const copySession = (session: UniversalSession) => {
+  const copySession = (session: CapturedSession) => {
     const data = {
       domain: session.domain,
       cookies: session.cookies,
@@ -84,20 +96,20 @@ export function QuickSessionsPanel() {
     toast.success(`تم نسخ جلسة ${session.siteName}`);
   };
 
-  const copyCookies = (session: UniversalSession) => {
+  const copyCookies = (session: CapturedSession) => {
     const cookieString = session.cookies.map(c => `${c.name}=${c.value}`).join('; ');
     navigator.clipboard.writeText(cookieString);
     toast.success('تم نسخ الكوكيز');
   };
 
-  const copyTokens = (session: UniversalSession) => {
+  const copyTokens = (session: CapturedSession) => {
     const tokens = session.tokens.map(t => ({ name: t.name, value: t.value, type: t.type }));
     navigator.clipboard.writeText(JSON.stringify(tokens, null, 2));
     toast.success('تم نسخ التوكنات');
   };
 
-  const downloadSession = (session: UniversalSession) => {
-    const data = universalSessionService.exportSession(session.id);
+  const downloadSession = (session: CapturedSession) => {
+    const data = JSON.stringify(session, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -108,17 +120,21 @@ export function QuickSessionsPanel() {
     toast.success('تم تحميل الجلسة');
   };
 
-  const deleteSession = (session: UniversalSession) => {
-    universalSessionService.deleteSession(session.id);
-    loadSessions();
-    toast.success('تم حذف الجلسة');
+  const deleteSession = async (session: CapturedSession) => {
+    if (isElectron && electronAPI?.deleteCapturedSession) {
+      await electronAPI.deleteCapturedSession(session.id);
+      setSessions(prev => prev.filter(s => s.id !== session.id));
+      toast.success('تم حذف الجلسة');
+    }
   };
 
-  const deleteAllSessions = () => {
+  const deleteAllSessions = async () => {
     if (confirm('هل أنت متأكد من حذف جميع الجلسات؟')) {
-      sessions.forEach(s => universalSessionService.deleteSession(s.id));
-      loadSessions();
-      toast.success('تم حذف جميع الجلسات');
+      if (isElectron && electronAPI?.deleteAllSessions) {
+        await electronAPI.deleteAllSessions();
+        setSessions([]);
+        toast.success('تم حذف جميع الجلسات');
+      }
     }
   };
 
@@ -305,7 +321,7 @@ export function QuickSessionsPanel() {
                             تحميل JSON
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
-                            const script = universalSessionService.generateSessionInjectionScript(session);
+                            const script = generateSessionInjectionScript(session);
                             navigator.clipboard.writeText(script);
                             toast.success('تم نسخ سكريبت الحقن');
                           }}>
@@ -337,7 +353,7 @@ export function QuickSessionsPanel() {
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {Math.floor((Date.now() - session.capturedAt.getTime()) / 60000)} د
+                      {Math.floor((Date.now() - new Date(session.capturedAt).getTime()) / 60000)} د
                     </span>
                   </div>
                 </div>
