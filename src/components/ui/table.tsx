@@ -2,19 +2,21 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => {
     const containerRef = React.useRef<HTMLDivElement | null>(null);
-    const [canScroll, setCanScroll] = React.useState(false);
+    const [canScrollX, setCanScrollX] = React.useState(false);
+    const [canScrollY, setCanScrollY] = React.useState(false);
 
     React.useEffect(() => {
       const el = containerRef.current;
       if (!el) return;
 
       const update = () => {
-        setCanScroll(el.scrollWidth > el.clientWidth + 2);
+        setCanScrollX(el.scrollWidth > el.clientWidth + 2);
+        setCanScrollY(el.scrollHeight > el.clientHeight + 2);
       };
 
       update();
@@ -27,29 +29,37 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
       };
     }, []);
 
-    const scroll = (dir: "left" | "right") => {
+    const scrollX = (dir: "left" | "right") => {
       const el = containerRef.current;
       if (!el) return;
       const delta = dir === "left" ? -260 : 260;
       el.scrollBy({ left: delta, behavior: "smooth" });
     };
 
+    const scrollY = (dir: "up" | "down") => {
+      const el = containerRef.current;
+      if (!el) return;
+      const delta = dir === "up" ? -200 : 200;
+      el.scrollBy({ top: delta, behavior: "smooth" });
+    };
+
     return (
       <div className="relative w-full">
         <div
           ref={containerRef}
-          className="w-full overflow-auto [scrollbar-width:thin]"
+          className="w-full max-h-[70vh] overflow-auto [scrollbar-width:thin]"
         >
           <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
         </div>
 
-        {canScroll && (
+        {/* Horizontal scroll arrows */}
+        {canScrollX && (
           <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between">
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              onClick={() => scroll("left")}
+              onClick={() => scrollX("left")}
               className={cn(
                 "pointer-events-auto h-8 w-8 rounded-full border border-border",
                 "bg-background/80 backdrop-blur shadow-sm",
@@ -63,7 +73,7 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
               type="button"
               variant="ghost"
               size="icon"
-              onClick={() => scroll("right")}
+              onClick={() => scrollX("right")}
               className={cn(
                 "pointer-events-auto h-8 w-8 rounded-full border border-border",
                 "bg-background/80 backdrop-blur shadow-sm",
@@ -71,6 +81,39 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
               aria-label="تمرير يمين"
             >
               <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Vertical scroll arrows */}
+        {canScrollY && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 bottom-0 flex flex-col items-center justify-between py-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => scrollY("up")}
+              className={cn(
+                "pointer-events-auto h-8 w-8 rounded-full border border-border",
+                "bg-background/80 backdrop-blur shadow-sm",
+              )}
+              aria-label="تمرير للأعلى"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => scrollY("down")}
+              className={cn(
+                "pointer-events-auto h-8 w-8 rounded-full border border-border",
+                "bg-background/80 backdrop-blur shadow-sm",
+              )}
+              aria-label="تمرير للأسفل"
+            >
+              <ChevronDown className="h-4 w-4" />
             </Button>
           </div>
         )}
