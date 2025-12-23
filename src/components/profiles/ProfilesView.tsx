@@ -3,13 +3,14 @@ import { useAppStore } from '@/stores/appStore';
 import { Profile } from '@/types';
 import { ProfileCard } from './ProfileCard';
 import { CreateProfileModal } from './CreateProfileModal';
+import { ProfileTableView } from './ProfileTableView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Plus, Search, Users, LayoutGrid, List, Play, Square, 
   CheckSquare, XSquare, Loader2, Grid3X3, Minimize2, 
-  Maximize2, Monitor, Download, Upload, Copy
+  Maximize2, Monitor, Download, Upload, Copy, Table2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -17,11 +18,11 @@ import { isElectron, getElectronAPI } from '@/lib/electron';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
 
 export function ProfilesView() {
-  const { profiles, updateProfile, addProfile, extensions, settings, license, setActiveView } = useAppStore();
+  const { profiles, updateProfile, addProfile, deleteProfile, extensions, settings, license, setActiveView } = useAppStore();
   const [showModal, setShowModal] = useState(false);
   const [editProfile, setEditProfile] = useState<Profile | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('table');
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [launchingBatch, setLaunchingBatch] = useState(false);
@@ -457,6 +458,18 @@ export function ProfilesView() {
 
         <div className="flex bg-muted rounded-lg p-1">
           <button
+            onClick={() => setViewMode('table')}
+            className={cn(
+              "p-2 rounded-md transition-colors",
+              viewMode === 'table' 
+                ? "bg-primary text-primary-foreground" 
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            title="جدول متقدم"
+          >
+            <Table2 className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => setViewMode('grid')}
             className={cn(
               "p-2 rounded-md transition-colors",
@@ -464,6 +477,7 @@ export function ProfilesView() {
                 ? "bg-primary text-primary-foreground" 
                 : "text-muted-foreground hover:text-foreground"
             )}
+            title="شبكة"
           >
             <LayoutGrid className="w-4 h-4" />
           </button>
@@ -475,13 +489,14 @@ export function ProfilesView() {
                 ? "bg-primary text-primary-foreground" 
                 : "text-muted-foreground hover:text-foreground"
             )}
+            title="قائمة"
           >
             <List className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Profiles Grid/List */}
+      {/* Profiles Display */}
       {filteredProfiles.length === 0 ? (
         <div className="text-center py-16">
           <div className="w-20 h-20 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
@@ -503,6 +518,16 @@ export function ProfilesView() {
             </Button>
           )}
         </div>
+      ) : viewMode === 'table' ? (
+        <ProfileTableView 
+          profiles={filteredProfiles}
+          onEdit={handleEdit}
+          onDelete={(profile) => {
+            deleteProfile(profile.id);
+            toast.success(`تم حذف ${profile.name}`);
+          }}
+          searchQuery={searchQuery}
+        />
       ) : (
         <div className={cn(
           viewMode === 'grid'
