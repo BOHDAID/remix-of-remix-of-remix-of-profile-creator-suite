@@ -19,206 +19,397 @@ function createFingerprintScript(fingerprint, userDataDir) {
       fs.mkdirSync(extensionDir, { recursive: true });
     }
     
-    // manifest.json
+    // manifest.json - Using Manifest V3 with MAIN world for proper injection
     const manifest = {
       manifest_version: 3,
       name: "Fingerprint Spoof",
       version: "1.0",
+      permissions: [],
       content_scripts: [{
         matches: ["<all_urls>"],
-        js: ["content.js"],
+        js: ["inject.js"],
         run_at: "document_start",
-        all_frames: true
+        all_frames: true,
+        world: "MAIN"  // CRITICAL: Run in MAIN world to modify page's JS objects
       }]
     };
     
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // content.js - inject fingerprint spoofing
-    const contentScript = `
+    // inject.js - Runs in MAIN world so it can modify the actual page's objects
+    const injectScript = `
 (function() {
+  'use strict';
+  
   const fp = ${JSON.stringify(fingerprint)};
   
-  // ========== Navigator Properties ==========
-  const navigatorProps = {
-    hardwareConcurrency: { value: fp.cpuCores || fp.hardwareConcurrency },
-    deviceMemory: { value: fp.deviceMemory },
-    platform: { value: fp.platform },
-    language: { value: fp.language },
-    languages: { value: Object.freeze(fp.languages || [fp.language]) },
-    maxTouchPoints: { value: 0 },
-    vendor: { value: 'Google Inc.' },
-    appVersion: { value: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+  // ========== Store Original Values ==========
+  const originalNavigator = {};
+  const originalScreen = {};
+  
+  // ========== Navigator Properties Override ==========
+  const navigatorOverrides = {
+    hardwareConcurrency: fp.cpuCores || fp.hardwareConcurrency || 8,
+    deviceMemory: fp.deviceMemory || 8,
+    platform: fp.platform || 'Win32',
+    language: fp.language || 'en-US',
+    languages: Object.freeze(fp.languages || [fp.language || 'en-US']),
+    maxTouchPoints: fp.maxTouchPoints || 0,
+    vendor: fp.vendor || 'Google Inc.',
+    appVersion: fp.appVersion || '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    userAgent: fp.userAgent || navigator.userAgent
   };
   
-  for (const [key, descriptor] of Object.entries(navigatorProps)) {
+  for (const [key, value] of Object.entries(navigatorOverrides)) {
     try {
-      Object.defineProperty(navigator, key, { ...descriptor, configurable: true });
+      Object.defineProperty(Navigator.prototype, key, {
+        get: function() { return value; },
+        configurable: true
+      });
+    } catch (e) {
+      console.warn('[FP] Failed to override navigator.' + key);
+    }
+  }
+  
+  // Also override navigator object directly
+  for (const [key, value] of Object.entries(navigatorOverrides)) {
+    try {
+      Object.defineProperty(navigator, key, {
+        get: function() { return value; },
+        configurable: true
+      });
     } catch (e) {}
   }
   
-  // ========== Screen Properties ==========
-  const screenProps = {
-    width: { value: fp.screenWidth },
-    height: { value: fp.screenHeight },
-    availWidth: { value: fp.screenWidth },
-    availHeight: { value: fp.screenHeight - 40 },
-    colorDepth: { value: fp.colorDepth || 24 },
-    pixelDepth: { value: fp.colorDepth || 24 }
+  // ========== Screen Properties Override ==========
+  const screenOverrides = {
+    width: fp.screenWidth || 1920,
+    height: fp.screenHeight || 1080,
+    availWidth: fp.screenWidth || 1920,
+    availHeight: (fp.screenHeight || 1080) - 40,
+    colorDepth: fp.colorDepth || 24,
+    pixelDepth: fp.colorDepth || 24
   };
   
-  for (const [key, descriptor] of Object.entries(screenProps)) {
+  for (const [key, value] of Object.entries(screenOverrides)) {
     try {
-      Object.defineProperty(screen, key, { ...descriptor, configurable: true });
+      Object.defineProperty(Screen.prototype, key, {
+        get: function() { return value; },
+        configurable: true
+      });
     } catch (e) {}
   }
   
   // ========== Window Properties ==========
   try {
-    Object.defineProperty(window, 'devicePixelRatio', { value: fp.pixelRatio || 1, configurable: true });
-    Object.defineProperty(window, 'innerWidth', { value: fp.screenWidth - 200, configurable: true });
-    Object.defineProperty(window, 'innerHeight', { value: fp.screenHeight - 150, configurable: true });
-    Object.defineProperty(window, 'outerWidth', { value: fp.screenWidth, configurable: true });
-    Object.defineProperty(window, 'outerHeight', { value: fp.screenHeight, configurable: true });
+    Object.defineProperty(window, 'devicePixelRatio', { 
+      get: () => fp.pixelRatio || 1, 
+      configurable: true 
+    });
+    Object.defineProperty(window, 'innerWidth', { 
+      get: () => (fp.screenWidth || 1920) - 200, 
+      configurable: true 
+    });
+    Object.defineProperty(window, 'innerHeight', { 
+      get: () => (fp.screenHeight || 1080) - 150, 
+      configurable: true 
+    });
+    Object.defineProperty(window, 'outerWidth', { 
+      get: () => fp.screenWidth || 1920, 
+      configurable: true 
+    });
+    Object.defineProperty(window, 'outerHeight', { 
+      get: () => fp.screenHeight || 1080, 
+      configurable: true 
+    });
   } catch (e) {}
   
-  // ========== WebGL Spoofing ==========
-  const getParameterProxyHandler = {
-    apply: function(target, thisArg, args) {
-      const param = args[0];
-      if (param === 37445) return fp.webglVendor || fp.gpuVendor;
-      if (param === 37446) return fp.webglRenderer || fp.gpu;
-      return target.apply(thisArg, args);
+  // ========== WebGL Spoofing - CRITICAL ==========
+  const webglVendor = fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
+  const webglRenderer = fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+  
+  // Hook WebGLRenderingContext.getParameter
+  const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+  WebGLRenderingContext.prototype.getParameter = function(param) {
+    // UNMASKED_VENDOR_WEBGL
+    if (param === 37445) {
+      return webglVendor;
     }
+    // UNMASKED_RENDERER_WEBGL
+    if (param === 37446) {
+      return webglRenderer;
+    }
+    return originalGetParameter.call(this, param);
   };
   
-  const hookWebGL = (proto) => {
-    if (proto && proto.getParameter) {
-      proto.getParameter = new Proxy(proto.getParameter, getParameterProxyHandler);
-    }
-  };
-  
-  hookWebGL(WebGLRenderingContext.prototype);
+  // Hook WebGL2 as well
   if (typeof WebGL2RenderingContext !== 'undefined') {
-    hookWebGL(WebGL2RenderingContext.prototype);
+    const originalGetParameter2 = WebGL2RenderingContext.prototype.getParameter;
+    WebGL2RenderingContext.prototype.getParameter = function(param) {
+      if (param === 37445) {
+        return webglVendor;
+      }
+      if (param === 37446) {
+        return webglRenderer;
+      }
+      return originalGetParameter2.call(this, param);
+    };
   }
+  
+  // Hook getExtension to return our spoofed debug info
+  const originalGetExtension = WebGLRenderingContext.prototype.getExtension;
+  WebGLRenderingContext.prototype.getExtension = function(name) {
+    const ext = originalGetExtension.call(this, name);
+    if (name === 'WEBGL_debug_renderer_info' && ext) {
+      return ext;
+    }
+    return ext;
+  };
   
   // ========== Canvas Fingerprint Spoofing ==========
   const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  const originalToBlob = HTMLCanvasElement.prototype.toBlob;
   const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-  const noise = () => Math.floor(Math.random() * 10) - 5;
+  
+  const canvasNoise = fp.canvasNoise || 5;
+  const addNoise = () => Math.floor(Math.random() * canvasNoise * 2) - canvasNoise;
+  
+  CanvasRenderingContext2D.prototype.getImageData = function(sx, sy, sw, sh) {
+    const imageData = originalGetImageData.call(this, sx, sy, sw, sh);
+    // Add subtle noise to image data
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + addNoise())); // R
+      imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + addNoise())); // G
+      imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + addNoise())); // B
+    }
+    return imageData;
+  };
   
   HTMLCanvasElement.prototype.toDataURL = function(...args) {
+    // Force a read to trigger the noise
     const ctx = this.getContext('2d');
-    if (ctx) {
-      const imageData = originalGetImageData.call(ctx, 0, 0, this.width, this.height);
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise()));
-      }
-      ctx.putImageData(imageData, 0, 0);
+    if (ctx && this.width > 0 && this.height > 0) {
+      try {
+        const imgData = originalGetImageData.call(ctx, 0, 0, this.width, this.height);
+        for (let i = 0; i < imgData.data.length; i += 4) {
+          imgData.data[i] = Math.max(0, Math.min(255, imgData.data[i] + addNoise()));
+        }
+        ctx.putImageData(imgData, 0, 0);
+      } catch (e) {}
     }
     return originalToDataURL.apply(this, args);
   };
   
   // ========== Audio Context Fingerprint Spoofing ==========
   if (window.AudioContext || window.webkitAudioContext) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    const originalCreateAnalyser = AudioContextClass.prototype.createAnalyser;
-    const originalCreateOscillator = AudioContextClass.prototype.createOscillator;
-    const originalGetFloatFrequencyData = AnalyserNode.prototype.getFloatFrequencyData;
+    const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
     
+    const originalGetFloatFrequencyData = AnalyserNode.prototype.getFloatFrequencyData;
     AnalyserNode.prototype.getFloatFrequencyData = function(array) {
       originalGetFloatFrequencyData.call(this, array);
+      const audioNoise = fp.audioNoise || 0.0001;
       for (let i = 0; i < array.length; i++) {
-        array[i] += Math.random() * 0.0001;
+        array[i] += (Math.random() * 2 - 1) * audioNoise;
       }
+    };
+    
+    const originalGetChannelData = AudioBuffer.prototype.getChannelData;
+    AudioBuffer.prototype.getChannelData = function(channel) {
+      const data = originalGetChannelData.call(this, channel);
+      const audioNoise = fp.audioNoise || 0.0001;
+      for (let i = 0; i < data.length; i += 100) {
+        data[i] += (Math.random() * 2 - 1) * audioNoise;
+      }
+      return data;
     };
   }
   
   // ========== WebRTC IP Leak Prevention ==========
   if (window.RTCPeerConnection) {
-    const origRTCPeerConnection = window.RTCPeerConnection;
-    window.RTCPeerConnection = function(...args) {
-      const config = args[0] || {};
+    const OrigRTCPeerConnection = window.RTCPeerConnection;
+    window.RTCPeerConnection = function(config, constraints) {
+      config = config || {};
+      // Clear ice servers to prevent IP leak
       config.iceServers = [];
-      args[0] = config;
-      const pc = new origRTCPeerConnection(...args);
+      const pc = new OrigRTCPeerConnection(config, constraints);
+      
+      // Override createOffer and createAnswer to filter candidates
+      const origCreateOffer = pc.createOffer.bind(pc);
+      pc.createOffer = function(options) {
+        return origCreateOffer(options).then(offer => {
+          offer.sdp = offer.sdp.replace(/a=candidate:.*\\r\\n/g, '');
+          return offer;
+        });
+      };
+      
       return pc;
     };
-    window.RTCPeerConnection.prototype = origRTCPeerConnection.prototype;
+    window.RTCPeerConnection.prototype = OrigRTCPeerConnection.prototype;
+  }
+  
+  // Also block webkitRTCPeerConnection
+  if (window.webkitRTCPeerConnection) {
+    window.webkitRTCPeerConnection = window.RTCPeerConnection;
   }
   
   // ========== Battery API Spoofing ==========
   if (navigator.getBattery) {
-    navigator.getBattery = () => Promise.resolve({
+    const fakeBattery = {
       charging: true,
       chargingTime: 0,
       dischargingTime: Infinity,
       level: 1.0,
       addEventListener: () => {},
-      removeEventListener: () => {}
-    });
+      removeEventListener: () => {},
+      dispatchEvent: () => true
+    };
+    navigator.getBattery = () => Promise.resolve(fakeBattery);
   }
   
   // ========== Media Devices Spoofing ==========
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-    navigator.mediaDevices.enumerateDevices = () => Promise.resolve([
+    const fakeDevices = [
       { deviceId: 'default', kind: 'audioinput', label: '', groupId: 'default' },
+      { deviceId: 'communications', kind: 'audioinput', label: '', groupId: 'communications' },
       { deviceId: 'default', kind: 'videoinput', label: '', groupId: 'default' },
       { deviceId: 'default', kind: 'audiooutput', label: '', groupId: 'default' }
-    ]);
+    ];
+    navigator.mediaDevices.enumerateDevices = () => Promise.resolve(fakeDevices);
   }
   
   // ========== Timezone Spoofing ==========
   if (fp.timezone) {
-    const originalDateTimeFormat = Intl.DateTimeFormat;
-    const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+    const tzMap = {
+      'America/New_York': -300, 'America/Los_Angeles': -480, 'America/Chicago': -360,
+      'America/Denver': -420, 'America/Phoenix': -420,
+      'Europe/London': 0, 'Europe/Paris': 60, 'Europe/Berlin': 60, 'Europe/Moscow': 180,
+      'Asia/Dubai': 240, 'Asia/Riyadh': 180, 'Asia/Tokyo': 540, 'Asia/Shanghai': 480,
+      'Asia/Singapore': 480, 'Asia/Seoul': 540, 'Asia/Kolkata': 330,
+      'Australia/Sydney': 660, 'Australia/Melbourne': 660,
+      'Pacific/Auckland': 780
+    };
     
+    const targetOffset = tzMap[fp.timezone] !== undefined ? -tzMap[fp.timezone] : new Date().getTimezoneOffset();
+    
+    const originalGetTimezoneOffset = Date.prototype.getTimezoneOffset;
+    Date.prototype.getTimezoneOffset = function() {
+      return targetOffset;
+    };
+    
+    // Override Intl.DateTimeFormat
+    const OriginalDateTimeFormat = Intl.DateTimeFormat;
     Intl.DateTimeFormat = function(locales, options) {
       options = options || {};
-      options.timeZone = fp.timezone;
-      return new originalDateTimeFormat(locales, options);
+      if (!options.timeZone) {
+        options.timeZone = fp.timezone;
+      }
+      return new OriginalDateTimeFormat(locales, options);
     };
-    Intl.DateTimeFormat.prototype = originalDateTimeFormat.prototype;
+    Intl.DateTimeFormat.prototype = OriginalDateTimeFormat.prototype;
+    Intl.DateTimeFormat.supportedLocalesOf = OriginalDateTimeFormat.supportedLocalesOf;
     
+    const originalResolvedOptions = OriginalDateTimeFormat.prototype.resolvedOptions;
     Intl.DateTimeFormat.prototype.resolvedOptions = function() {
       const result = originalResolvedOptions.call(this);
-      result.timeZone = fp.timezone;
+      if (!result.timeZone || result.timeZone === Intl.DateTimeFormat().resolvedOptions().timeZone) {
+        result.timeZone = fp.timezone;
+      }
       return result;
     };
+  }
+  
+  // ========== Client Hints API Spoofing ==========
+  if (navigator.userAgentData) {
+    const brands = fp.clientHintsBrands || [
+      { brand: 'Google Chrome', version: '131' },
+      { brand: 'Chromium', version: '131' },
+      { brand: 'Not_A Brand', version: '24' }
+    ];
     
-    // Override Date methods for timezone
-    const tzOffset = (() => {
-      const tzMap = {
-        'America/New_York': -5, 'America/Los_Angeles': -8, 'America/Chicago': -6,
-        'Europe/London': 0, 'Europe/Paris': 1, 'Europe/Berlin': 1, 'Europe/Moscow': 3,
-        'Asia/Dubai': 4, 'Asia/Riyadh': 3, 'Asia/Tokyo': 9, 'Asia/Shanghai': 8,
-        'Asia/Singapore': 8, 'Australia/Sydney': 11
-      };
-      return (tzMap[fp.timezone] || 0) * 60;
-    })();
-    
-    const origGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-    Date.prototype.getTimezoneOffset = function() {
-      return -tzOffset;
+    const fakeUserAgentData = {
+      brands: brands,
+      mobile: false,
+      platform: fp.clientHintsPlatform || 'Windows',
+      getHighEntropyValues: async (hints) => {
+        const result = {
+          brands: brands,
+          mobile: false,
+          platform: fp.clientHintsPlatform || 'Windows'
+        };
+        if (hints.includes('platformVersion')) result.platformVersion = fp.platformVersion || '10.0.0';
+        if (hints.includes('architecture')) result.architecture = 'x86';
+        if (hints.includes('model')) result.model = '';
+        if (hints.includes('uaFullVersion')) result.uaFullVersion = '131.0.0.0';
+        if (hints.includes('fullVersionList')) result.fullVersionList = brands;
+        return result;
+      },
+      toJSON: () => ({ brands, mobile: false, platform: fp.clientHintsPlatform || 'Windows' })
     };
+    
+    try {
+      Object.defineProperty(navigator, 'userAgentData', {
+        get: () => fakeUserAgentData,
+        configurable: true
+      });
+    } catch (e) {}
   }
   
   // ========== Font Fingerprint Protection ==========
   const originalMeasureText = CanvasRenderingContext2D.prototype.measureText;
   CanvasRenderingContext2D.prototype.measureText = function(text) {
     const result = originalMeasureText.call(this, text);
-    return {
-      ...result,
-      width: result.width + Math.random() * 0.001
-    };
+    const noise = (Math.random() - 0.5) * 0.002;
+    return new Proxy(result, {
+      get: function(target, prop) {
+        if (prop === 'width') {
+          return target.width + noise;
+        }
+        return target[prop];
+      }
+    });
   };
   
-  console.log('[Fingerprint] Advanced spoofing applied:', fp.gpu, fp.cpu, fp.timezone);
+  // ========== Hide Webdriver Flag ==========
+  try {
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => false,
+      configurable: true
+    });
+  } catch (e) {}
+  
+  // Delete automation indicators
+  delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+  delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+  delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+  delete window.__webdriver_evaluate;
+  delete window.__selenium_evaluate;
+  delete window.__webdriver_script_function;
+  delete window.__webdriver_script_func;
+  delete window.__webdriver_script_fn;
+  delete window.__fxdriver_evaluate;
+  delete window.__driver_unwrapped;
+  delete window.__webdriver_unwrapped;
+  delete window.__driver_evaluate;
+  delete window.__selenium_unwrapped;
+  delete window.__fxdriver_unwrapped;
+  
+  // ========== Performance API Noise ==========
+  const originalPerformanceNow = Performance.prototype.now;
+  const perfOffset = Math.random() * 0.001;
+  Performance.prototype.now = function() {
+    return originalPerformanceNow.call(this) + perfOffset + Math.random() * 0.0001;
+  };
+  
+  console.log('[Fingerprint] ✓ Spoofing applied:', {
+    webgl: webglRenderer.substring(0, 50) + '...',
+    screen: screenOverrides.width + 'x' + screenOverrides.height,
+    platform: navigatorOverrides.platform,
+    timezone: fp.timezone || 'default'
+  });
 })();
 `;
     
-    fs.writeFileSync(path.join(extensionDir, 'content.js'), contentScript);
+    fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
     
     return extensionDir;
   } catch (error) {
