@@ -57,8 +57,9 @@ export function QuickSessionsPanel() {
     let allSessions = universalSessionService.getAllSessions();
     
     // Create mock sessions if empty for demo
-    if (allSessions.length === 0 && profiles.length > 0) {
-      createMockSessions(profiles[0].id, 20);
+    if (allSessions.length === 0) {
+      const profileId = profiles.length > 0 ? profiles[0].id : 'demo-profile';
+      createMockSessions(profileId, 25);
       allSessions = universalSessionService.getAllSessions();
     }
     
