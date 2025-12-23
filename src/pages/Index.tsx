@@ -16,6 +16,11 @@ import { IdentityGeneratorView } from '@/components/identity/IdentityGeneratorVi
 import { AdvancedFingerprintView } from '@/components/fingerprint/AdvancedFingerprintView';
 import { AdvancedSecurityView } from '@/components/security/AdvancedSecurityView';
 import { AdvancedProxyView } from '@/components/proxy/AdvancedProxyView';
+import { AutonomousModeView } from '@/components/autonomous/AutonomousModeView';
+import { ThermalControlView } from '@/components/thermal/ThermalControlView';
+import { BehavioralSimulationView } from '@/components/behavioral/BehavioralSimulationView';
+import { SessionManagerView } from '@/components/session/SessionManagerView';
+import { IdentityDNAView } from '@/components/dna/IdentityDNAView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -26,13 +31,11 @@ export default function Index() {
   const { activeView, settings } = useAppStore();
   const { isRTL } = useTranslation();
 
-  // Apply language direction
   useEffect(() => {
     document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
     document.body.style.direction = isRTL ? 'rtl' : 'ltr';
   }, [isRTL]);
 
-  // Apply font size
   useEffect(() => {
     const sizes = { small: '14px', medium: '16px', large: '18px', xlarge: '20px' };
     document.documentElement.style.fontSize = sizes[settings.fontSize] || '16px';
@@ -40,36 +43,26 @@ export default function Index() {
 
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard':
-        return <DashboardView />;
-      case 'profiles':
-        return <ProfilesView />;
-      case 'extensions':
-        return <ExtensionsView />;
-      case 'settings':
-        return <SettingsView />;
-      case 'license':
-        return <LicenseView />;
-      case 'updates':
-        return <UpdatesView />;
-      case 'security':
-        return <AdvancedSecurityView />;
-      case 'proxy':
-        return <AdvancedProxyView />;
-      case 'backup':
-        return <BackupView />;
-      case 'schedule':
-        return <ScheduleView />;
-      case 'leakTest':
-        return <LeakTestView />;
-      case 'aiHub':
-        return <AIHubView />;
-      case 'identity':
-        return <IdentityGeneratorView />;
-      case 'fingerprint':
-        return <AdvancedFingerprintView />;
-      default:
-        return <DashboardView />;
+      case 'dashboard': return <DashboardView />;
+      case 'profiles': return <ProfilesView />;
+      case 'extensions': return <ExtensionsView />;
+      case 'settings': return <SettingsView />;
+      case 'license': return <LicenseView />;
+      case 'updates': return <UpdatesView />;
+      case 'security': return <AdvancedSecurityView />;
+      case 'proxy': return <AdvancedProxyView />;
+      case 'backup': return <BackupView />;
+      case 'schedule': return <ScheduleView />;
+      case 'leakTest': return <LeakTestView />;
+      case 'aiHub': return <AIHubView />;
+      case 'identity': return <IdentityGeneratorView />;
+      case 'fingerprint': return <AdvancedFingerprintView />;
+      case 'autonomous': return <AutonomousModeView />;
+      case 'thermal': return <ThermalControlView />;
+      case 'behavioral': return <BehavioralSimulationView />;
+      case 'session': return <SessionManagerView />;
+      case 'dna': return <IdentityDNAView />;
+      default: return <DashboardView />;
     }
   };
 
