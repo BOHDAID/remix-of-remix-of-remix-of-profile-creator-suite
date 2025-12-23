@@ -53,73 +53,16 @@ export async function testProxy(proxy: ProxyConfig): Promise<ProxyTestResult> {
     }
   }
   
-  // Fallback for web preview - can't actually test proxy
-  const startTime = performance.now();
-  
-  try {
-    // Validate proxy format
-    const isValidHost = /^[\w.-]+$/.test(proxy.host);
-    const isValidPort = /^\d+$/.test(proxy.port) && parseInt(proxy.port) > 0 && parseInt(proxy.port) <= 65535;
-    
-    if (!isValidHost || !isValidPort) {
-      return {
-        success: false,
-        latency: 0,
-        error: 'Invalid proxy format',
-        timestamp: new Date()
-      };
-    }
-    
-    // In browser, we can only check if the endpoint is reachable (without proxy)
-    // Show warning that this is not a real proxy test
-    console.warn('[ProxyTester] Running in browser - cannot route through proxy. Use Electron app for real proxy testing.');
-    
-    // Get current IP (NOT through proxy - just for demo)
-    const response = await fetch('https://api.ipify.org?format=json', {
-      signal: AbortSignal.timeout(5000)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Network test failed');
-    }
-    
-    const data = await response.json();
-    const endTime = performance.now();
-    const latency = Math.round(endTime - startTime);
-    
-    // Get geo info
-    let geoInfo = { country: '', city: '', isp: '' };
-    try {
-      const geoResponse = await fetch(`https://ipapi.co/${data.ip}/json/`);
-      if (geoResponse.ok) {
-        const geoData = await geoResponse.json();
-        geoInfo = {
-          country: geoData.country_name || '',
-          city: geoData.city || '',
-          isp: geoData.org || ''
-        };
-      }
-    } catch {}
-    
-    return {
-      success: true,
-      latency,
-      ip: data.ip,
-      country: geoInfo.country,
-      city: geoInfo.city,
-      isp: geoInfo.isp,
-      error: 'تنبيه: هذا IP جهازك الحقيقي - اختبار البروكسي الحقيقي يتطلب تطبيق Electron',
-      timestamp: new Date()
-    };
-    
-  } catch (err) {
-    return {
-      success: false,
-      latency: 0,
-      error: err instanceof Error ? err.message : 'Connection failed',
-      timestamp: new Date()
-    };
-  }
+  // Fallback for web preview - CANNOT test proxy from browser
+  // Must show error, NOT the user's real IP
+  return {
+    success: false,
+    latency: 0,
+    error: isElectron() 
+      ? 'فشل اختبار البروكسي - تأكد من صحة البيانات' 
+      : 'اختبار البروكسي الحقيقي يتطلب تطبيق Electron - لا يمكن الاختبار من المتصفح',
+    timestamp: new Date()
+  };
 }
 
 // Wrapper for testProxy - uses real Electron test when available
