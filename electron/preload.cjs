@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () => ipcRenderer.invoke('install-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   
+  // Manual GitHub Update
+  verifyGitHubRepo: (repoUrl, accessToken) => ipcRenderer.invoke('verify-github-repo', { repoUrl, accessToken }),
+  updateFromGitHub: (repoUrl, accessToken) => ipcRenderer.invoke('update-from-github', { repoUrl, accessToken }),
+  onManualUpdateProgress: (callback) => ipcRenderer.on('manual-update-progress', (_, progress) => callback(progress)),
+  
   // ========== Session Capture API ==========
   captureProfileSession: (profileId, url) => ipcRenderer.invoke('capture-profile-session', { profileId, url }),
   getCapturedSessions: () => ipcRenderer.invoke('get-captured-sessions'),

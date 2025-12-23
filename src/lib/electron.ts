@@ -85,6 +85,28 @@ export interface ContinuousCaptureOptions {
   type?: 'screen' | 'window';
 }
 
+// GitHub Manual Update Types
+export interface GitHubVerifyResult {
+  success: boolean;
+  repoName?: string;
+  latestVersion?: string;
+  currentVersion?: string;
+  hasUpdate?: boolean;
+  error?: string;
+}
+
+export interface GitHubUpdateResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export interface ManualUpdateProgress {
+  stage: 'downloading' | 'extracting' | 'installing' | 'restarting';
+  percent: number;
+  message: string;
+}
+
 export interface ElectronAPI {
   // Window controls
   minimizeWindow: () => void;
@@ -119,6 +141,11 @@ export interface ElectronAPI {
   onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => void;
   installUpdate: () => Promise<void>;
   checkForUpdates: () => Promise<CheckUpdateResult>;
+  
+  // Manual GitHub Update
+  verifyGitHubRepo: (repoUrl: string, accessToken: string) => Promise<GitHubVerifyResult>;
+  updateFromGitHub: (repoUrl: string, accessToken: string) => Promise<GitHubUpdateResult>;
+  onManualUpdateProgress: (callback: (progress: ManualUpdateProgress) => void) => void;
   
   // Session Capture API
   captureProfileSession: (profileId: string, url?: string) => Promise<SessionCaptureResult>;

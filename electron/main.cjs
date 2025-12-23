@@ -1484,3 +1484,220 @@ ipcMain.handle('stop-continuous-capture', async () => {
   }
   return { success: true, message: 'Continuous capture stopped' };
 });
+
+// ========== Manual GitHub Update API ==========
+
+const https = require('https');
+const AdmZip = require('adm-zip');
+
+// Helper function to make HTTPS requests
+function httpsRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'BHD-Browser-Updater',
+        ...options.headers
+      }
+    }, (res) => {
+      // Handle redirects
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return httpsRequest(res.headers.location, options).then(resolve).catch(reject);
+      }
+      
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+        return;
+      }
+      
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        if (options.json) {
+          try {
+            resolve(JSON.parse(buffer.toString()));
+          } catch (e) {
+            reject(new Error('Invalid JSON response'));
+          }
+        } else {
+          resolve(buffer);
+        }
+      });
+    });
+    
+    req.on('error', reject);
+  });
+}
+
+// Parse GitHub repo URL to get owner and repo name
+function parseGitHubUrl(url) {
+  // Support formats: https://github.com/owner/repo or owner/repo
+  const match = url.match(/(?:github\.com\/)?([^\/]+)\/([^\/\s]+)/);
+  if (match) {
+    return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
+  }
+  return null;
+}
+
+// Verify GitHub repository and check for updates
+ipcMain.handle('verify-github-repo', async (event, { repoUrl, accessToken }) => {
+  try {
+    const parsed = parseGitHubUrl(repoUrl);
+    if (!parsed) {
+      return { success: false, error: 'رابط المستودع غير صحيح' };
+    }
+    
+    const { owner, repo } = parsed;
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+    
+    const headers = {
+      'Accept': 'application/vnd.github.v3+json'
+    };
+    
+    if (accessToken) {
+      headers['Authorization'] = `token ${accessToken}`;
+    }
+    
+    const release = await httpsRequest(apiUrl, { json: true, headers });
+    
+    // Get current app version
+    const currentVersion = app.getVersion();
+    const latestVersion = release.tag_name.replace(/^v/, '');
+    
+    // Compare versions
+    const hasUpdate = latestVersion !== currentVersion;
+    
+    return {
+      success: true,
+      repoName: `${owner}/${repo}`,
+      latestVersion,
+      currentVersion,
+      hasUpdate
+    };
+  } catch (error) {
+    console.error('GitHub verify error:', error);
+    let errorMsg = 'فشل الاتصال بالمستودع';
+    if (error.message.includes('404')) {
+      errorMsg = 'المستودع غير موجود أو التوكن غير صحيح';
+    } else if (error.message.includes('401') || error.message.includes('403')) {
+      errorMsg = 'التوكن غير صحيح أو ليس لديك صلاحية';
+    }
+    return { success: false, error: errorMsg };
+  }
+});
+
+// Update from GitHub repository
+ipcMain.handle('update-from-github', async (event, { repoUrl, accessToken }) => {
+  try {
+    const parsed = parseGitHubUrl(repoUrl);
+    if (!parsed) {
+      return { success: false, error: 'رابط المستودع غير صحيح' };
+    }
+    
+    const { owner, repo } = parsed;
+    
+    // Send progress updates
+    const sendProgress = (stage, percent, message) => {
+      mainWindow?.webContents.send('manual-update-progress', { stage, percent, message });
+    };
+    
+    sendProgress('downloading', 0, 'جاري البحث عن التحديث...');
+    
+    // Get latest release
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+    const headers = {
+      'Accept': 'application/vnd.github.v3+json'
+    };
+    
+    if (accessToken) {
+      headers['Authorization'] = `token ${accessToken}`;
+    }
+    
+    const release = await httpsRequest(apiUrl, { json: true, headers });
+    
+    // Find the source code zip asset
+    let downloadUrl = release.zipball_url;
+    
+    sendProgress('downloading', 20, 'جاري تحميل الملفات...');
+    
+    // Download the zip file
+    const zipBuffer = await httpsRequest(downloadUrl, { 
+      headers: accessToken ? { 'Authorization': `token ${accessToken}` } : {}
+    });
+    
+    sendProgress('extracting', 50, 'جاري فك الضغط...');
+    
+    // Save and extract zip
+    const tempDir = path.join(app.getPath('temp'), 'bhd-update');
+    const zipPath = path.join(tempDir, 'update.zip');
+    
+    // Clean temp directory
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(tempDir, { recursive: true });
+    
+    fs.writeFileSync(zipPath, zipBuffer);
+    
+    // Extract zip
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(tempDir, true);
+    
+    sendProgress('installing', 70, 'جاري تثبيت التحديث...');
+    
+    // Find extracted folder (GitHub adds a prefix)
+    const extractedFolders = fs.readdirSync(tempDir).filter(f => 
+      fs.statSync(path.join(tempDir, f)).isDirectory()
+    );
+    
+    if (extractedFolders.length === 0) {
+      return { success: false, error: 'فشل في فك الضغط' };
+    }
+    
+    const sourceDir = path.join(tempDir, extractedFolders[0]);
+    const appDir = app.getAppPath();
+    
+    // Copy new files to app directory (only update specific folders)
+    const foldersToUpdate = ['dist', 'electron'];
+    const filesToUpdate = ['package.json'];
+    
+    for (const folder of foldersToUpdate) {
+      const srcFolder = path.join(sourceDir, folder);
+      const destFolder = path.join(appDir, folder);
+      
+      if (fs.existsSync(srcFolder)) {
+        // Remove old folder
+        if (fs.existsSync(destFolder)) {
+          fs.rmSync(destFolder, { recursive: true, force: true });
+        }
+        // Copy new folder
+        fs.cpSync(srcFolder, destFolder, { recursive: true });
+      }
+    }
+    
+    for (const file of filesToUpdate) {
+      const srcFile = path.join(sourceDir, file);
+      const destFile = path.join(appDir, file);
+      
+      if (fs.existsSync(srcFile)) {
+        fs.copyFileSync(srcFile, destFile);
+      }
+    }
+    
+    sendProgress('restarting', 100, 'جاري إعادة تشغيل التطبيق...');
+    
+    // Clean up temp files
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    
+    // Restart app after short delay
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 1500);
+    
+    return { success: true, message: 'تم التحديث بنجاح، جاري إعادة التشغيل...' };
+  } catch (error) {
+    console.error('GitHub update error:', error);
+    return { success: false, error: `فشل التحديث: ${error.message}` };
+  }
+});
