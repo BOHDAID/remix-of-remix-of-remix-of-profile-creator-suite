@@ -171,6 +171,14 @@ export const isElectron = (): boolean => {
 // Get Electron API
 export const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
 
+// Get Electron API with fallbacks for web (alias for compatibility)
+export const getElectronAPI = (): ElectronAPI | null => {
+  if (isElectron()) {
+    return window.electronAPI!;
+  }
+  return null;
+};
+
 // Web fallback functions
 export const webFallback = {
   showNotSupported: () => {
