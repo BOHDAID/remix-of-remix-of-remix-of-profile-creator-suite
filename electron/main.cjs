@@ -855,14 +855,31 @@ $windows = @()
 $null = [IntPtr]::Zero
 $hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
 
+# Get all main Chrome windows belonging to our profile PIDs
 while ($hwnd -ne [IntPtr]::Zero) {
     $processId = 0
     [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
-    if ($pids -contains $processId) {
-        $windows += @{ hwnd = $hwnd; pid = $processId }
+    
+    # Check if this window belongs to one of our profile processes
+    foreach ($targetPid in $pids) {
+        if ($processId -eq $targetPid) {
+            $windows += @{ hwnd = $hwnd; pid = $processId }
+            break
+        }
     }
     $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
 }
+
+# Remove duplicate windows (keep first per PID - main window)
+$seenPids = @{}
+$uniqueWindows = @()
+foreach ($win in $windows) {
+    if (-not $seenPids.ContainsKey($win.pid)) {
+        $seenPids[$win.pid] = $true
+        $uniqueWindows += $win
+    }
+}
+$windows = $uniqueWindows
 
 $i = 0
 foreach ($win in $windows) {
@@ -945,11 +962,18 @@ $pids = @(${pids.join(',')})
 $null = [IntPtr]::Zero
 $hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
 
+# Find windows matching our profile PIDs
+$seenPids = @{}
 while ($hwnd -ne [IntPtr]::Zero) {
     $processId = 0
     [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
-    if ($pids -contains $processId) {
-        [Win32]::ShowWindow($hwnd, 6) | Out-Null
+    
+    foreach ($targetPid in $pids) {
+        if ($processId -eq $targetPid -and -not $seenPids.ContainsKey($processId)) {
+            $seenPids[$processId] = $true
+            [Win32]::ShowWindow($hwnd, 6) | Out-Null
+            break
+        }
     }
     $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
 }
@@ -1012,11 +1036,18 @@ $pids = @(${pids.join(',')})
 $null = [IntPtr]::Zero
 $hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
 
+# Find windows matching our profile PIDs
+$seenPids = @{}
 while ($hwnd -ne [IntPtr]::Zero) {
     $processId = 0
     [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
-    if ($pids -contains $processId) {
-        [Win32]::ShowWindow($hwnd, 9) | Out-Null
+    
+    foreach ($targetPid in $pids) {
+        if ($processId -eq $targetPid -and -not $seenPids.ContainsKey($processId)) {
+            $seenPids[$processId] = $true
+            [Win32]::ShowWindow($hwnd, 9) | Out-Null
+            break
+        }
     }
     $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
 }
