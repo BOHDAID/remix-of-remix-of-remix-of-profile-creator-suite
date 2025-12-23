@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Cookie,
   Key,
@@ -32,11 +33,13 @@ import {
   BarChart3,
   ExternalLink,
   Plus,
-  Settings2
+  Settings2,
+  Camera
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isElectron, electronAPI } from '@/lib/electron';
 import { 
   universalSessionService, 
   UniversalSession, 
@@ -52,6 +55,10 @@ export function SessionManagerView() {
   const [selectedSession, setSelectedSession] = useState<UniversalSession | null>(null);
   const [stats, setStats] = useState(universalSessionService.getStats());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [isCapturing, setIsCapturing] = useState(false);
+  
+  const runningProfiles = profiles.filter(p => p.status === 'running');
   
   const [settings, setSettings] = useState({
     autoCapture: true,
@@ -66,21 +73,113 @@ export function SessionManagerView() {
 
   useEffect(() => {
     loadData();
+    loadElectronSessions();
     
     // Subscribe to session updates
     const unsubscribe = universalSessionService.onSessionUpdate(() => {
       loadData();
     });
 
+    // Listen for new sessions from Electron
+    if (isElectron() && electronAPI) {
+      electronAPI.onSessionCaptured?.((session: any) => {
+        toast.success(`تم التقاط جلسة: ${session.siteName}`);
+        loadElectronSessions();
+      });
+    }
+
     return () => unsubscribe();
   }, [profiles]);
 
   const loadData = () => {
-    // Get only real sessions - no mock data
     const allSessions = universalSessionService.getAllSessions();
     setSessions(allSessions);
     setCredentials(universalSessionService.getAllCredentials());
     setStats(universalSessionService.getStats());
+  };
+
+  const loadElectronSessions = async () => {
+    if (isElectron() && electronAPI) {
+      try {
+        const result = await electronAPI.getCapturedSessions();
+        if (result.success && result.sessions) {
+          // Convert Electron sessions to UniversalSession format and merge
+          const electronSessions: UniversalSession[] = result.sessions.map((s: any) => ({
+            id: s.id,
+            profileId: s.profileId,
+            domain: s.domain,
+            subdomain: '',
+            siteName: s.siteName,
+            fullUrl: s.url || `https://${s.domain}`,
+            cookies: s.cookies.map((c: any) => ({
+              name: c.name,
+              value: c.value,
+              domain: c.domain,
+              path: c.path || '/',
+              expires: c.expires ? new Date(c.expires * 1000) : undefined,
+              secure: c.secure || false,
+              httpOnly: c.httpOnly || false,
+              sameSite: c.sameSite || 'Lax',
+              size: (c.name.length + c.value.length)
+            })),
+            localStorage: s.localStorage || {},
+            sessionStorage: s.sessionStorage || {},
+            tokens: s.tokens || [],
+            headers: {},
+            capturedAt: new Date(s.capturedAt),
+            expiresAt: new Date(Date.now() + 86400000 * 30),
+            status: s.status || 'active',
+            loginState: s.tokens?.length > 0 ? 'logged_in' : 'unknown',
+            autoRefresh: false,
+            metadata: {
+              userAgent: navigator.userAgent,
+              browser: 'Chromium',
+              os: 'Windows',
+              deviceType: 'desktop' as const,
+              screenResolution: `${window.screen.width}x${window.screen.height}`,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              language: navigator.language
+            }
+          }));
+          
+          // Merge with existing sessions
+          const existingIds = sessions.map(s => s.id);
+          const newSessions = electronSessions.filter(s => !existingIds.includes(s.id));
+          if (newSessions.length > 0) {
+            setSessions(prev => [...prev, ...newSessions]);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load Electron sessions:', error);
+      }
+    }
+  };
+
+  const captureSessionNow = async () => {
+    if (!selectedProfileId) {
+      toast.error('يرجى اختيار بروفايل أولاً');
+      return;
+    }
+
+    if (!isElectron() || !electronAPI) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق Electron');
+      return;
+    }
+
+    setIsCapturing(true);
+    try {
+      const result = await electronAPI.captureProfileSession(selectedProfileId, '');
+      if (result.success) {
+        toast.success(`تم التقاط الجلسة: ${result.session.siteName}`);
+        loadElectronSessions();
+      } else {
+        toast.error(result.error || 'فشل التقاط الجلسة');
+      }
+    } catch (error) {
+      toast.error('حدث خطأ أثناء التقاط الجلسة');
+    } finally {
+      setIsCapturing(false);
+    }
   };
 
   const refreshSession = (sessionId: string) => {
@@ -227,7 +326,43 @@ export function SessionManagerView() {
             <p className="text-muted-foreground">التقاط وإدارة جلسات كل المواقع تلقائياً</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Capture Session Button */}
+          {isElectron() && (
+            <div className="flex items-center gap-2">
+              <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="اختر بروفايل" />
+                </SelectTrigger>
+                <SelectContent>
+                  {runningProfiles.length === 0 ? (
+                    <SelectItem value="none" disabled>
+                      لا توجد بروفايلات نشطة
+                    </SelectItem>
+                  ) : (
+                    runningProfiles.map(profile => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="default" 
+                onClick={captureSessionNow} 
+                disabled={isCapturing || !selectedProfileId || runningProfiles.length === 0}
+                className="gap-2"
+              >
+                {isCapturing ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Camera className="w-4 h-4" />
+                )}
+                التقاط الجلسة
+              </Button>
+            </div>
+          )}
           <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-2">
             <Upload className="w-4 h-4" />
             استيراد
