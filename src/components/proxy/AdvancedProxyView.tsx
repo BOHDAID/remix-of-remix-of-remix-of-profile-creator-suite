@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -75,8 +76,9 @@ interface GeoCheck {
 
 export function AdvancedProxyView() {
   const { isRTL } = useTranslation();
-  const { proxyChains, setActiveView } = useAppStore();
+  const { proxyChains, addProxyChain, setActiveView } = useAppStore();
   const [activeTab, setActiveTab] = useState('health');
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
   const scrollTabs = (dir: 'left' | 'right') => {
@@ -84,6 +86,53 @@ export function AdvancedProxyView() {
     if (!el) return;
     const delta = dir === 'left' ? -240 : 240;
     el.scrollBy({ left: isRTL ? -delta : delta, behavior: 'smooth' });
+  };
+
+  // Form state for add proxy
+  const [proxyName, setProxyName] = useState('');
+  const [proxyType, setProxyType] = useState<'http' | 'https' | 'socks4' | 'socks5'>('http');
+  const [proxyHost, setProxyHost] = useState('');
+  const [proxyPort, setProxyPort] = useState('');
+  const [proxyUsername, setProxyUsername] = useState('');
+  const [proxyPassword, setProxyPassword] = useState('');
+
+  const resetForm = () => {
+    setProxyName('');
+    setProxyType('http');
+    setProxyHost('');
+    setProxyPort('');
+    setProxyUsername('');
+    setProxyPassword('');
+  };
+
+  const handleAddProxy = () => {
+    if (!proxyName.trim() || !proxyHost.trim() || !proxyPort.trim()) {
+      toast.error(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      return;
+    }
+
+    const proxy = {
+      type: proxyType,
+      host: proxyHost.trim(),
+      port: proxyPort.trim(),
+      username: proxyUsername.trim() || undefined,
+      password: proxyPassword.trim() || undefined,
+      status: 'active' as const,
+      lastTested: undefined,
+      speed: undefined,
+    };
+
+    const chain = {
+      id: crypto.randomUUID(),
+      name: proxyName.trim(),
+      proxies: [proxy],
+      enabled: true,
+    };
+
+    addProxyChain(chain);
+    setShowAddDialog(false);
+    resetForm();
+    toast.success(isRTL ? 'تم إضافة البروكسي بنجاح' : 'Proxy added successfully');
   };
 
   // AI Rotation Settings
@@ -180,7 +229,7 @@ export function AdvancedProxyView() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="glow" onClick={() => setActiveView('proxy')} className="gap-2">
+          <Button variant="glow" onClick={() => setShowAddDialog(true)} className="gap-2">
             <Plus className="w-4 h-4" />
             {isRTL ? 'إضافة بروكسي' : 'Add Proxy'}
           </Button>
@@ -636,6 +685,102 @@ export function AdvancedProxyView() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Add Proxy Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-primary" />
+              {isRTL ? 'إضافة بروكسي جديد' : 'Add New Proxy'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{isRTL ? 'اسم البروكسي' : 'Proxy Name'}</Label>
+              <Input
+                value={proxyName}
+                onChange={(e) => setProxyName(e.target.value)}
+                placeholder={isRTL ? 'مثال: بروكسي أمريكي' : 'e.g., US Proxy'}
+                className="bg-input"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{isRTL ? 'النوع' : 'Type'}</Label>
+                <Select value={proxyType} onValueChange={(v) => setProxyType(v as any)}>
+                  <SelectTrigger className="bg-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="http">HTTP</SelectItem>
+                    <SelectItem value="https">HTTPS</SelectItem>
+                    <SelectItem value="socks4">SOCKS4</SelectItem>
+                    <SelectItem value="socks5">SOCKS5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{isRTL ? 'المنفذ' : 'Port'}</Label>
+                <Input
+                  value={proxyPort}
+                  onChange={(e) => setProxyPort(e.target.value)}
+                  placeholder="8080"
+                  className="bg-input"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{isRTL ? 'العنوان' : 'Host'}</Label>
+              <Input
+                value={proxyHost}
+                onChange={(e) => setProxyHost(e.target.value)}
+                placeholder="proxy.example.com"
+                className="bg-input"
+                dir="ltr"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{isRTL ? 'اسم المستخدم (اختياري)' : 'Username (optional)'}</Label>
+                <Input
+                  value={proxyUsername}
+                  onChange={(e) => setProxyUsername(e.target.value)}
+                  placeholder="username"
+                  className="bg-input"
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{isRTL ? 'كلمة المرور (اختياري)' : 'Password (optional)'}</Label>
+                <Input
+                  type="password"
+                  value={proxyPassword}
+                  onChange={(e) => setProxyPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="bg-input"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }}>
+              {isRTL ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button variant="glow" onClick={handleAddProxy}>
+              <Plus className="w-4 h-4" />
+              {isRTL ? 'إضافة' : 'Add'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
