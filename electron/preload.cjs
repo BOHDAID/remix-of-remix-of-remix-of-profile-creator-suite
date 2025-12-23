@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopContinuousCapture: () => ipcRenderer.invoke('stop-continuous-capture'),
   onScreenCaptured: (callback) => ipcRenderer.on('screen-captured', (_, capture) => callback(capture)),
   
+  // ========== Real Proxy Testing API ==========
+  testProxyReal: (proxyConfig) => ipcRenderer.invoke('test-proxy-real', proxyConfig),
+  
   // Platform info
   platform: process.platform,
   isElectron: true
