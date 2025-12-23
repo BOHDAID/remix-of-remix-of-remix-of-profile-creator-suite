@@ -1,4 +1,5 @@
 // Real Proxy Testing Library
+import { isElectron } from './electron';
 
 export interface ProxyTestResult {
   success: boolean;
@@ -19,75 +20,43 @@ export interface ProxyConfig {
   password?: string;
 }
 
-// Test proxy by making a real request through it
+// Test proxy using Electron's real proxy testing (routes through actual proxy)
 export async function testProxy(proxy: ProxyConfig): Promise<ProxyTestResult> {
+  // If running in Electron, use the real proxy test
+  if (isElectron() && (window as any).electronAPI?.testProxyReal) {
+    try {
+      const result = await (window as any).electronAPI.testProxyReal({
+        type: proxy.type,
+        host: proxy.host,
+        port: proxy.port,
+        username: proxy.username,
+        password: proxy.password
+      });
+      
+      return {
+        success: result.success,
+        latency: result.latency || 0,
+        ip: result.ip,
+        country: result.country,
+        city: result.city,
+        isp: result.isp,
+        error: result.error,
+        timestamp: new Date(result.timestamp || Date.now())
+      };
+    } catch (error) {
+      return {
+        success: false,
+        latency: 0,
+        error: error instanceof Error ? error.message : 'Electron proxy test failed',
+        timestamp: new Date()
+      };
+    }
+  }
+  
+  // Fallback for web preview - can't actually test proxy
   const startTime = performance.now();
   
   try {
-    // Since browser can't directly use proxy, we test by checking if the proxy server responds
-    // In a real Electron app, this would use the proxy directly
-    
-    // First, verify the proxy server is reachable
-    const proxyUrl = `${proxy.type}://${proxy.host}:${proxy.port}`;
-    
-    // Test connectivity by trying to reach a test endpoint
-    // Using multiple services for reliability
-    const testUrls = [
-      'https://api.ipify.org?format=json',
-      'https://httpbin.org/ip',
-      'https://api.myip.com'
-    ];
-    
-    let ip = '';
-    let success = false;
-    let error = '';
-    
-    // In browser environment, we can't actually route through proxy
-    // but we can test if the proxy host is valid and measure latency
-    
-    // Try to fetch IP info (simulates proxy working)
-    for (const url of testUrls) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
-        const response = await fetch(url, {
-          signal: controller.signal,
-          mode: 'cors'
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          ip = data.ip || data.origin || '';
-          success = true;
-          break;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    const endTime = performance.now();
-    const latency = Math.round(endTime - startTime);
-    
-    // Now get geo info for the IP
-    let geoInfo = { country: '', city: '', isp: '' };
-    if (ip) {
-      try {
-        const geoResponse = await fetch(`https://ipapi.co/${ip}/json/`);
-        if (geoResponse.ok) {
-          const geoData = await geoResponse.json();
-          geoInfo = {
-            country: geoData.country_name || geoData.country || '',
-            city: geoData.city || '',
-            isp: geoData.org || geoData.isp || ''
-          };
-        }
-      } catch {}
-    }
-    
     // Validate proxy format
     const isValidHost = /^[\w.-]+$/.test(proxy.host);
     const isValidPort = /^\d+$/.test(proxy.port) && parseInt(proxy.port) > 0 && parseInt(proxy.port) <= 65535;
@@ -101,75 +70,22 @@ export async function testProxy(proxy: ProxyConfig): Promise<ProxyTestResult> {
       };
     }
     
-    // For demo purposes, we simulate proxy testing with real latency measurement
-    // In Electron, this would route through the actual proxy
-    return {
-      success,
-      latency,
-      ip,
-      country: geoInfo.country,
-      city: geoInfo.city,
-      isp: geoInfo.isp,
-      timestamp: new Date()
-    };
+    // In browser, we can only check if the endpoint is reachable (without proxy)
+    // Show warning that this is not a real proxy test
+    console.warn('[ProxyTester] Running in browser - cannot route through proxy. Use Electron app for real proxy testing.');
     
-  } catch (err) {
-    return {
-      success: false,
-      latency: 0,
-      error: err instanceof Error ? err.message : 'Connection failed',
-      timestamp: new Date()
-    };
-  }
-}
-
-// Test proxy with CORS proxy service (for browser environments)
-export async function testProxyWithCors(proxy: ProxyConfig): Promise<ProxyTestResult> {
-  const startTime = performance.now();
-  
-  try {
-    // Validate proxy format first
-    const isValidHost = /^[\w.-]+$/.test(proxy.host);
-    const isValidPort = /^\d+$/.test(proxy.port) && parseInt(proxy.port) > 0 && parseInt(proxy.port) <= 65535;
-    
-    if (!isValidHost) {
-      return {
-        success: false,
-        latency: 0,
-        error: 'Invalid host format',
-        timestamp: new Date()
-      };
-    }
-    
-    if (!isValidPort) {
-      return {
-        success: false,
-        latency: 0,
-        error: 'Invalid port number',
-        timestamp: new Date()
-      };
-    }
-    
-    // Try to resolve the proxy host using DNS lookup simulation
-    // This verifies the domain/IP is valid
-    
-    // Test connection to a known good endpoint
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-    
+    // Get current IP (NOT through proxy - just for demo)
     const response = await fetch('https://api.ipify.org?format=json', {
-      signal: controller.signal
+      signal: AbortSignal.timeout(5000)
     });
-    
-    clearTimeout(timeoutId);
-    const endTime = performance.now();
-    const baseLatency = Math.round(endTime - startTime);
     
     if (!response.ok) {
       throw new Error('Network test failed');
     }
     
     const data = await response.json();
+    const endTime = performance.now();
+    const latency = Math.round(endTime - startTime);
     
     // Get geo info
     let geoInfo = { country: '', city: '', isp: '' };
@@ -185,17 +101,14 @@ export async function testProxyWithCors(proxy: ProxyConfig): Promise<ProxyTestRe
       }
     } catch {}
     
-    // Add simulated proxy overhead based on type
-    const proxyOverhead = proxy.type === 'socks5' ? 50 : proxy.type === 'socks4' ? 40 : 30;
-    const simulatedLatency = baseLatency + proxyOverhead + Math.random() * 50;
-    
     return {
       success: true,
-      latency: Math.round(simulatedLatency),
+      latency,
       ip: data.ip,
       country: geoInfo.country,
       city: geoInfo.city,
       isp: geoInfo.isp,
+      error: 'تنبيه: هذا IP جهازك الحقيقي - اختبار البروكسي الحقيقي يتطلب تطبيق Electron',
       timestamp: new Date()
     };
     
@@ -209,6 +122,11 @@ export async function testProxyWithCors(proxy: ProxyConfig): Promise<ProxyTestRe
   }
 }
 
+// Wrapper for testProxy - uses real Electron test when available
+export async function testProxyWithCors(proxy: ProxyConfig): Promise<ProxyTestResult> {
+  return testProxy(proxy);
+}
+
 // Batch test multiple proxies
 export async function testMultipleProxies(
   proxies: { id: string; config: ProxyConfig }[]
@@ -216,13 +134,13 @@ export async function testMultipleProxies(
   const results = new Map<string, ProxyTestResult>();
   
   // Test proxies in parallel with concurrency limit
-  const concurrencyLimit = 5;
+  const concurrencyLimit = 3; // Lower for real proxy testing
   
   for (let i = 0; i < proxies.length; i += concurrencyLimit) {
     const batch = proxies.slice(i, i + concurrencyLimit);
     const batchResults = await Promise.all(
       batch.map(async ({ id, config }) => {
-        const result = await testProxyWithCors(config);
+        const result = await testProxy(config);
         return { id, result };
       })
     );
@@ -241,34 +159,59 @@ export async function checkProxyAnonymity(proxy: ProxyConfig): Promise<{
   details: string[];
 }> {
   try {
-    // Get current IP
-    const currentIpResponse = await fetch('https://api.ipify.org?format=json');
-    const currentIpData = await currentIpResponse.json();
-    const currentIp = currentIpData.ip;
+    // Test the proxy first
+    const proxyResult = await testProxy(proxy);
     
-    // In a real implementation, we would route through the proxy and check headers
-    // For now, we return based on proxy type
-    if (proxy.type === 'socks5') {
-      return {
-        level: 'elite',
-        details: ['SOCKS5 provides high anonymity', 'No IP headers forwarded', 'Encrypted connection']
-      };
-    } else if (proxy.type === 'socks4') {
-      return {
-        level: 'anonymous',
-        details: ['SOCKS4 provides good anonymity', 'IP may be visible in some cases']
-      };
-    } else if (proxy.type === 'https') {
-      return {
-        level: 'anonymous',
-        details: ['HTTPS proxy with SSL', 'Traffic encrypted', 'Some headers may be forwarded']
-      };
-    } else {
+    if (!proxyResult.success || !proxyResult.ip) {
       return {
         level: 'transparent',
-        details: ['HTTP proxy', 'Traffic not encrypted', 'Original IP may be visible']
+        details: ['Could not test proxy anonymity - connection failed']
       };
     }
+    
+    // Get real IP (without proxy) for comparison - only in Electron
+    if (isElectron()) {
+      // In Electron, we can compare real IP vs proxy IP
+      // For now, determine by proxy type
+      if (proxy.type === 'socks5') {
+        return {
+          level: 'elite',
+          details: [
+            'SOCKS5 provides high anonymity',
+            'No IP headers forwarded',
+            `Proxy IP: ${proxyResult.ip}`,
+            proxyResult.country ? `Location: ${proxyResult.city}, ${proxyResult.country}` : ''
+          ].filter(Boolean)
+        };
+      } else if (proxy.type === 'socks4') {
+        return {
+          level: 'anonymous',
+          details: [
+            'SOCKS4 provides good anonymity',
+            `Proxy IP: ${proxyResult.ip}`,
+            proxyResult.country ? `Location: ${proxyResult.city}, ${proxyResult.country}` : ''
+          ].filter(Boolean)
+        };
+      } else if (proxy.type === 'https') {
+        return {
+          level: 'anonymous',
+          details: [
+            'HTTPS proxy with SSL encryption',
+            `Proxy IP: ${proxyResult.ip}`,
+            proxyResult.country ? `Location: ${proxyResult.city}, ${proxyResult.country}` : ''
+          ].filter(Boolean)
+        };
+      }
+    }
+    
+    return {
+      level: 'transparent',
+      details: [
+        'HTTP proxy - traffic may not be encrypted',
+        `IP: ${proxyResult.ip}`,
+        proxyResult.country ? `Location: ${proxyResult.city}, ${proxyResult.country}` : ''
+      ].filter(Boolean)
+    };
   } catch {
     return {
       level: 'transparent',

@@ -868,6 +868,253 @@ ipcMain.handle('check-for-updates', async () => {
   }
 });
 
+// ========== Real Proxy Testing ==========
+ipcMain.handle('test-proxy-real', async (event, proxyConfig) => {
+  const { type, host, port, username, password } = proxyConfig;
+  const startTime = Date.now();
+  
+  try {
+    // Use Node.js native modules for real proxy testing
+    const net = require('net');
+    const http = require('http');
+    const https = require('https');
+    const { SocksClient } = (() => {
+      try {
+        return require('socks');
+      } catch {
+        return { SocksClient: null };
+      }
+    })();
+    
+    // Build proxy URL
+    let proxyUrl = '';
+    if (username && password) {
+      proxyUrl = `${type}://${username}:${password}@${host}:${port}`;
+    } else {
+      proxyUrl = `${type}://${host}:${port}`;
+    }
+    
+    // Test IP lookup through proxy
+    const testIpUrl = 'https://api.ipify.org?format=json';
+    const geoUrl = 'https://ipapi.co/';
+    
+    let resultIp = '';
+    let geoInfo = { country: '', city: '', isp: '' };
+    
+    // For HTTP/HTTPS proxy, use native http request with proxy
+    if (type === 'http' || type === 'https') {
+      const result = await new Promise((resolve, reject) => {
+        const proxyReq = http.request({
+          host: host,
+          port: parseInt(port),
+          method: 'CONNECT',
+          path: 'api.ipify.org:443',
+          headers: {
+            'Host': 'api.ipify.org:443',
+            ...(username && password ? {
+              'Proxy-Authorization': 'Basic ' + Buffer.from(username + ':' + password).toString('base64')
+            } : {})
+          }
+        });
+        
+        proxyReq.on('connect', (res, socket) => {
+          if (res.statusCode === 200) {
+            const tlsSocket = require('tls').connect({
+              socket: socket,
+              host: 'api.ipify.org',
+              servername: 'api.ipify.org'
+            }, () => {
+              const req = https.request({
+                hostname: 'api.ipify.org',
+                path: '/?format=json',
+                method: 'GET',
+                socket: tlsSocket,
+                agent: false,
+                createConnection: () => tlsSocket
+              }, (response) => {
+                let data = '';
+                response.on('data', chunk => data += chunk);
+                response.on('end', () => {
+                  try {
+                    const json = JSON.parse(data);
+                    resolve({ success: true, ip: json.ip });
+                  } catch (e) {
+                    resolve({ success: false, error: 'Invalid response' });
+                  }
+                });
+              });
+              
+              req.on('error', (e) => resolve({ success: false, error: e.message }));
+              req.end();
+            });
+            
+            tlsSocket.on('error', (e) => resolve({ success: false, error: e.message }));
+          } else {
+            resolve({ success: false, error: 'Proxy connection failed: ' + res.statusCode });
+          }
+        });
+        
+        proxyReq.on('error', (e) => resolve({ success: false, error: e.message }));
+        proxyReq.setTimeout(10000, () => {
+          proxyReq.destroy();
+          resolve({ success: false, error: 'Connection timeout' });
+        });
+        proxyReq.end();
+      });
+      
+      if (result.success) {
+        resultIp = result.ip;
+      } else {
+        return {
+          success: false,
+          latency: 0,
+          error: result.error,
+          timestamp: new Date().toISOString()
+        };
+      }
+    } else if ((type === 'socks4' || type === 'socks5') && SocksClient) {
+      // SOCKS proxy testing
+      try {
+        const socksOptions = {
+          proxy: {
+            host: host,
+            port: parseInt(port),
+            type: type === 'socks5' ? 5 : 4,
+            ...(username && password ? { userId: username, password: password } : {})
+          },
+          command: 'connect',
+          destination: {
+            host: 'api.ipify.org',
+            port: 443
+          },
+          timeout: 10000
+        };
+        
+        const { socket } = await SocksClient.createConnection(socksOptions);
+        
+        const tlsSocket = require('tls').connect({
+          socket: socket,
+          host: 'api.ipify.org',
+          servername: 'api.ipify.org'
+        });
+        
+        const result = await new Promise((resolve, reject) => {
+          tlsSocket.on('secureConnect', () => {
+            tlsSocket.write('GET /?format=json HTTP/1.1\\r\\nHost: api.ipify.org\\r\\nConnection: close\\r\\n\\r\\n');
+          });
+          
+          let data = '';
+          tlsSocket.on('data', chunk => data += chunk.toString());
+          tlsSocket.on('end', () => {
+            const bodyMatch = data.match(/\\r\\n\\r\\n(.*)$/s);
+            if (bodyMatch) {
+              try {
+                const json = JSON.parse(bodyMatch[1].trim());
+                resolve({ success: true, ip: json.ip });
+              } catch (e) {
+                resolve({ success: false, error: 'Invalid response' });
+              }
+            } else {
+              resolve({ success: false, error: 'No response body' });
+            }
+          });
+          
+          tlsSocket.on('error', (e) => resolve({ success: false, error: e.message }));
+          setTimeout(() => {
+            tlsSocket.destroy();
+            resolve({ success: false, error: 'Timeout' });
+          }, 10000);
+        });
+        
+        if (result.success) {
+          resultIp = result.ip;
+        } else {
+          return {
+            success: false,
+            latency: 0,
+            error: result.error,
+            timestamp: new Date().toISOString()
+          };
+        }
+      } catch (socksErr) {
+        return {
+          success: false,
+          latency: 0,
+          error: socksErr.message || 'SOCKS connection failed',
+          timestamp: new Date().toISOString()
+        };
+      }
+    } else {
+      // Fallback - simple TCP connectivity test
+      const result = await new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(5000);
+        
+        socket.on('connect', () => {
+          socket.destroy();
+          resolve({ success: true, error: null });
+        });
+        
+        socket.on('timeout', () => {
+          socket.destroy();
+          resolve({ success: false, error: 'Connection timeout' });
+        });
+        
+        socket.on('error', (err) => {
+          resolve({ success: false, error: err.message });
+        });
+        
+        socket.connect(parseInt(port), host);
+      });
+      
+      if (!result.success) {
+        return {
+          success: false,
+          latency: 0,
+          error: result.error,
+          timestamp: new Date().toISOString()
+        };
+      }
+    }
+    
+    const endTime = Date.now();
+    const latency = endTime - startTime;
+    
+    // Get geo info for the IP
+    if (resultIp) {
+      try {
+        const geoResponse = await fetch(`https://ipapi.co/${resultIp}/json/`);
+        if (geoResponse.ok) {
+          const geoData = await geoResponse.json();
+          geoInfo = {
+            country: geoData.country_name || geoData.country || '',
+            city: geoData.city || '',
+            isp: geoData.org || geoData.isp || ''
+          };
+        }
+      } catch {}
+    }
+    
+    return {
+      success: true,
+      latency,
+      ip: resultIp,
+      country: geoInfo.country,
+      city: geoInfo.city,
+      isp: geoInfo.isp,
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      latency: 0,
+      error: error.message || 'Connection failed',
+      timestamp: new Date().toISOString()
+    };
+  }
+});
+
 // ========== Window Management for Running Profiles ==========
 
 // Get running profile IDs
