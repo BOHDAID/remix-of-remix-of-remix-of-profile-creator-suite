@@ -1,10 +1,10 @@
 // Session Capture Background Service Worker
-// With sync to main app functionality
+// With sync to main app functionality via localStorage
 
 // Store captured sessions
 let capturedSessions = [];
 
-// Sync interval (every 10 seconds)
+// Sync interval (every 5 seconds for faster sync)
 let syncInterval = null;
 
 // Start sync when extension loads
@@ -22,16 +22,16 @@ function startAutoSync() {
     clearInterval(syncInterval);
   }
   
-  // Sync every 10 seconds
+  // Sync every 5 seconds
   syncInterval = setInterval(() => {
     syncSessionsToApp();
-  }, 10000);
+  }, 5000);
   
   // Initial sync
   syncSessionsToApp();
 }
 
-// Sync sessions to main app via localStorage (shared between extension and app)
+// Sync sessions to main app via multiple methods
 async function syncSessionsToApp() {
   try {
     const { sessions = [] } = await chrome.storage.local.get(['sessions']);
@@ -43,10 +43,34 @@ async function syncSessionsToApp() {
       source: 'bhd-session-capture-extension'
     };
     
-    // Save to chrome.storage.local with a special key for the app
+    // Method 1: Save to chrome.storage.local
     await chrome.storage.local.set({ 
       'bhd-synced-sessions': syncData 
     });
+    
+    // Method 2: Try to inject into page localStorage (for web app access)
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTab && activeTab.id && activeTab.url) {
+        // Check if it's the BHD app
+        const url = new URL(activeTab.url);
+        if (url.hostname.includes('lovable') || url.hostname === 'localhost') {
+          await chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            func: (data) => {
+              try {
+                localStorage.setItem('bhd-synced-sessions', JSON.stringify(data));
+              } catch (e) {
+                console.error('Failed to sync sessions to app:', e);
+              }
+            },
+            args: [syncData]
+          });
+        }
+      }
+    } catch (e) {
+      // Ignore errors for tabs we can't access
+    }
     
     console.log('[Session Capture] Synced', sessions.length, 'sessions');
   } catch (error) {
@@ -98,7 +122,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+  
+  if (request.action === 'syncToPage') {
+    syncToCurrentPage(request.tabId).then(() => {
+      sendResponse({ success: true });
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
 });
+
+// Sync sessions to current page's localStorage
+async function syncToCurrentPage(tabId) {
+  const { sessions = [] } = await chrome.storage.local.get(['sessions']);
+  
+  const syncData = {
+    lastSync: new Date().toISOString(),
+    sessions: sessions,
+    source: 'bhd-session-capture-extension'
+  };
+  
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (data) => {
+      localStorage.setItem('bhd-synced-sessions', JSON.stringify(data));
+      console.log('[BHD Extension] Synced', data.sessions.length, 'sessions to app');
+    },
+    args: [syncData]
+  });
+}
 
 // Capture session from current tab
 async function captureCurrentSession(tabId) {
@@ -109,6 +162,14 @@ async function captureCurrentSession(tabId) {
     
     // Get cookies for this domain
     const cookies = await chrome.cookies.getAll({ domain: url.hostname });
+    
+    // Also get cookies for the parent domain
+    const domainParts = url.hostname.split('.');
+    if (domainParts.length > 2) {
+      const parentDomain = '.' + domainParts.slice(-2).join('.');
+      const parentCookies = await chrome.cookies.getAll({ domain: parentDomain });
+      cookies.push(...parentCookies.filter(pc => !cookies.find(c => c.name === pc.name)));
+    }
     
     // Execute script to get localStorage and sessionStorage
     const [result] = await chrome.scripting.executeScript({
@@ -149,7 +210,14 @@ async function captureCurrentSession(tabId) {
     
     // Save to storage
     const { sessions = [] } = await chrome.storage.local.get(['sessions']);
-    sessions.unshift(session);
+    
+    // Check if session for this domain already exists
+    const existingIndex = sessions.findIndex(s => s.domain === session.domain);
+    if (existingIndex >= 0) {
+      sessions[existingIndex] = session;
+    } else {
+      sessions.unshift(session);
+    }
     
     // Keep only last 100 sessions
     if (sessions.length > 100) {
@@ -158,6 +226,16 @@ async function captureCurrentSession(tabId) {
     
     await chrome.storage.local.set({ sessions });
     capturedSessions = sessions;
+    
+    // Sync immediately
+    await syncSessionsToApp();
+    
+    // Also try to sync directly to the page if it's the BHD app
+    try {
+      await syncToCurrentPage(tabId);
+    } catch (e) {
+      // Ignore if we can't sync to this page
+    }
     
     return session;
   } catch (error) {
@@ -271,3 +349,18 @@ function maskValue(value) {
   if (!value || value.length < 12) return '****';
   return value.substring(0, 6) + '...' + value.substring(value.length - 4);
 }
+
+// Listen for tab updates to auto-sync when BHD app is opened
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url) {
+    try {
+      const url = new URL(tab.url);
+      if (url.hostname.includes('lovable') || url.hostname === 'localhost') {
+        // BHD app detected, sync sessions
+        await syncToCurrentPage(tabId);
+      }
+    } catch (e) {
+      // Ignore invalid URLs
+    }
+  }
+});
