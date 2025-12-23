@@ -600,12 +600,27 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     args.push(`--proxy-server=${proxy.type}://${proxy.host}:${proxy.port}`);
   }
 
-  // Add extensions
+  // Built-in extensions path (session capture extension)
+  const builtInExtensions = [];
+  
+  // Add session capture extension
+  const sessionCaptureExt = path.join(__dirname, '..', 'public', 'extensions', 'session-capture');
+  // Also check in resources for production
+  const sessionCaptureExtProd = path.join(process.resourcesPath || '', 'public', 'extensions', 'session-capture');
+  
+  if (fs.existsSync(sessionCaptureExt)) {
+    builtInExtensions.push(sessionCaptureExt);
+  } else if (fs.existsSync(sessionCaptureExtProd)) {
+    builtInExtensions.push(sessionCaptureExtProd);
+  }
+  
+  // Collect all extension paths
+  let allExtensionPaths = [...builtInExtensions];
+  
+  // Add user-specified extensions
   if (extensions && extensions.length > 0) {
-    const extensionPaths = extensions.filter(ext => fs.existsSync(ext)).join(',');
-    if (extensionPaths) {
-      args.push(`--load-extension=${extensionPaths}`);
-    }
+    const validUserExtensions = extensions.filter(ext => fs.existsSync(ext));
+    allExtensionPaths = allExtensionPaths.concat(validUserExtensions);
   }
 
   // Apply fingerprint settings
@@ -625,9 +640,14 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     // Create fingerprint injection script
     const fingerprintScript = createFingerprintScript(fingerprint, userDataDir);
     if (fingerprintScript) {
-      // The script will be loaded as an extension
-      args.push(`--load-extension=${fingerprintScript}${extensions && extensions.length > 0 ? ',' + extensions.filter(ext => fs.existsSync(ext)).join(',') : ''}`);
+      // Add fingerprint extension to the list
+      allExtensionPaths.unshift(fingerprintScript);
     }
+  }
+  
+  // Add all extensions to args
+  if (allExtensionPaths.length > 0) {
+    args.push(`--load-extension=${allExtensionPaths.join(',')}`);
   }
 
   try {
