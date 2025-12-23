@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>التقاط الجلسة</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 360px;
+      min-height: 200px;
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      padding: 16px;
+    }
+    
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .subtitle {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    
+    .current-site {
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .site-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .site-favicon {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.1);
+    }
+    
+    .site-name {
+      font-size: 14px;
+      font-weight: 500;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .capture-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+    
+    .capture-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);
+    }
+    
+    .capture-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .capture-btn.success {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+    }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    
+    .stat-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f97316;
+    }
+    
+    .stat-label {
+      font-size: 10px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    
+    .sessions-list {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .session-item {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .session-item:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    
+    .session-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .session-details {
+      flex: 1;
+      overflow: hidden;
+    }
+    
+    .session-domain {
+      font-size: 13px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .session-meta {
+      font-size: 11px;
+      color: #94a3b8;
+      display: flex;
+      gap: 8px;
+    }
+    
+    .session-actions {
+      display: flex;
+      gap: 4px;
+    }
+    
+    .action-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    
+    .action-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .action-btn.copy {
+      background: rgba(59, 130, 246, 0.2);
+    }
+    
+    .action-btn.delete {
+      background: rgba(239, 68, 68, 0.2);
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 30px;
+      color: #64748b;
+    }
+    
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    
+    .badge-success {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+    }
+    
+    .badge-warning {
+      background: rgba(234, 179, 8, 0.2);
+      color: #eab308;
+    }
+    
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .toast {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+    }
+    
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    
+    .toast.success {
+      background: rgba(34, 197, 94, 0.9);
+    }
+    
+    .toast.error {
+      background: rgba(239, 68, 68, 0.9);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">🔐</div>
+    <div>
+      <div class="title">التقاط الجلسة</div>
+      <div class="subtitle">BHD Session Capture</div>
+    </div>
+  </div>
+  
+  <div class="current-site" id="currentSite">
+    <div class="site-info">
+      <img class="site-favicon" id="siteFavicon" src="" alt="">
+      <span class="site-name" id="siteName">جاري التحميل...</span>
+    </div>
+  </div>
+  
+  <button class="capture-btn" id="captureBtn">
+    <span>📸</span>
+    <span id="captureBtnText">التقاط الجلسة الحالية</span>
+  </button>
+  
+  <div class="stats" id="stats">
+    <div class="stat-card">
+      <div class="stat-value" id="cookiesCount">0</div>
+      <div class="stat-label">كوكيز</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="tokensCount">0</div>
+      <div class="stat-label">توكنات</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="sessionsCount">0</div>
+      <div class="stat-label">جلسات محفوظة</div>
+    </div>
+  </div>
+  
+  <div class="sessions-list" id="sessionsList">
+    <!-- Sessions will be loaded here -->
+  </div>
+  
+  <div class="toast" id="toast"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
