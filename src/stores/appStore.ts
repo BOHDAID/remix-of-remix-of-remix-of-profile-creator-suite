@@ -72,8 +72,8 @@ interface AppState {
   addLeakTestResult: (result: LeakTestResult) => void;
   
   // UI State
-  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint' | 'autonomous' | 'thermal' | 'behavioral' | 'session' | 'dna' | 'captcha';
-  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint' | 'autonomous' | 'thermal' | 'behavioral' | 'session' | 'dna' | 'captcha') => void;
+  activeView: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint' | 'autonomous' | 'thermal' | 'behavioral' | 'session' | 'dna' | 'captcha' | 'vision';
+  setActiveView: (view: 'profiles' | 'extensions' | 'settings' | 'license' | 'updates' | 'proxy' | 'security' | 'backup' | 'dashboard' | 'schedule' | 'leakTest' | 'aiHub' | 'identity' | 'fingerprint' | 'autonomous' | 'thermal' | 'behavioral' | 'session' | 'dna' | 'captcha' | 'vision') => void;
 }
 
 const defaultSettings: AppSettings = {

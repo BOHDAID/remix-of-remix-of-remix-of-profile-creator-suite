@@ -1,7 +1,7 @@
 import { 
   Users, Puzzle, Settings, Key, ChevronLeft, Download, Shield, Database, Network,
   LayoutDashboard, Calendar, ShieldCheck, Brain, User, Fingerprint, Bot, Thermometer,
-  MousePointer2, Cookie, Dna
+  MousePointer2, Cookie, Dna, Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -26,6 +26,7 @@ export function Sidebar() {
     { id: 'behavioral' as const, label: isRTL ? 'المحاكاة' : 'Behavioral', icon: MousePointer2 },
     { id: 'session' as const, label: isRTL ? 'الجلسات' : 'Sessions', icon: Cookie },
     { id: 'aiHub' as const, label: isRTL ? 'مركز AI' : 'AI Hub', icon: Brain },
+    { id: 'vision' as const, label: isRTL ? 'عيون AI' : 'AI Vision', icon: Eye },
     { id: 'captcha' as const, label: isRTL ? 'حل CAPTCHA' : 'CAPTCHA Solver', icon: Bot },
     { id: 'identity' as const, label: isRTL ? 'الهويات' : 'Identity', icon: User },
     { id: 'fingerprint' as const, label: isRTL ? 'البصمة' : 'Fingerprint', icon: Fingerprint },
