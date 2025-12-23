@@ -1,6 +1,7 @@
 import { Minus, Square, X } from 'lucide-react';
 import { isElectron, getElectronAPI } from '@/lib/electron';
 import appLogo from '@/assets/app-logo.png';
+import { QuickSessionsPanel } from '@/components/session/QuickSessionsPanel';
 
 export function TitleBar() {
   const electronAPI = getElectronAPI();
@@ -15,6 +16,11 @@ export function TitleBar() {
       <div className="flex items-center gap-2 px-4">
         <img src={appLogo} alt="Logo" className="w-5 h-5 rounded" />
         <span className="text-sm font-semibold gradient-text">Profile Manager Pro</span>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex items-center gap-2 app-no-drag">
+        <QuickSessionsPanel />
       </div>
 
       {/* Window Controls */}
