@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { 
   Cookie,
   Key,
@@ -34,7 +36,10 @@ import {
   ExternalLink,
   Plus,
   Settings2,
-  Camera
+  Camera,
+  Edit,
+  Save,
+  X
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
@@ -45,6 +50,30 @@ import {
   UniversalSession, 
   LoginCredential
 } from '@/lib/universalSessionCapture';
+
+const SETTINGS_STORAGE_KEY = 'session_manager_settings';
+
+interface SessionSettings {
+  autoCapture: boolean;
+  autoLogin: boolean;
+  encryptData: boolean;
+  clearOnClose: boolean;
+  syncInterval: number;
+  backupEnabled: boolean;
+  captureAllSites: boolean;
+  detectLoginPages: boolean;
+}
+
+const defaultSettings: SessionSettings = {
+  autoCapture: true,
+  autoLogin: true,
+  encryptData: true,
+  clearOnClose: false,
+  syncInterval: 30,
+  backupEnabled: true,
+  captureAllSites: true,
+  detectLoginPages: true
+};
 
 export function SessionManagerView() {
   const { profiles } = useAppStore();
@@ -57,19 +86,58 @@ export function SessionManagerView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [isCapturing, setIsCapturing] = useState(false);
+  const [settings, setSettings] = useState<SessionSettings>(defaultSettings);
+  
+  // Add credential dialog
+  const [showAddCredentialDialog, setShowAddCredentialDialog] = useState(false);
+  const [editingCredential, setEditingCredential] = useState<LoginCredential | null>(null);
+  const [newCredential, setNewCredential] = useState({
+    profileId: '',
+    domain: '',
+    siteName: '',
+    username: '',
+    email: '',
+    password: '',
+    loginUrl: '',
+    autoLogin: true,
+    twoFactorEnabled: false
+  });
+  
+  // Add session dialog
+  const [showAddSessionDialog, setShowAddSessionDialog] = useState(false);
+  const [newSession, setNewSession] = useState({
+    profileId: '',
+    url: '',
+    cookies: '',
+    localStorage: '',
+    sessionStorage: ''
+  });
   
   const runningProfiles = profiles.filter(p => p.status === 'running');
-  
-  const [settings, setSettings] = useState({
-    autoCapture: true,
-    autoLogin: true,
-    encryptData: true,
-    clearOnClose: false,
-    syncInterval: 30,
-    backupEnabled: true,
-    captureAllSites: true,
-    detectLoginPages: true
-  });
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (savedSettings) {
+      try {
+        setSettings(JSON.parse(savedSettings));
+      } catch (e) {
+        console.error('Failed to load session settings:', e);
+      }
+    }
+  }, []);
+
+  // Save settings to localStorage
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  }, [settings]);
+
+  const loadData = useCallback(() => {
+    const allSessions = universalSessionService.getAllSessions();
+    setSessions(allSessions);
+    setCredentials(universalSessionService.getAllCredentials());
+    setStats(universalSessionService.getStats());
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -88,22 +156,23 @@ export function SessionManagerView() {
       });
     }
 
-    return () => unsubscribe();
-  }, [profiles]);
+    // Auto-refresh based on settings
+    const refreshInterval = setInterval(() => {
+      universalSessionService.refreshAllSessionStatus();
+      loadData();
+    }, settings.syncInterval * 1000);
 
-  const loadData = () => {
-    const allSessions = universalSessionService.getAllSessions();
-    setSessions(allSessions);
-    setCredentials(universalSessionService.getAllCredentials());
-    setStats(universalSessionService.getStats());
-  };
+    return () => {
+      unsubscribe();
+      clearInterval(refreshInterval);
+    };
+  }, [profiles, settings.syncInterval, loadData]);
 
   const loadElectronSessions = async () => {
     if (isElectron() && electronAPI) {
       try {
         const result = await electronAPI.getCapturedSessions();
         if (result.success && result.sessions) {
-          // Convert Electron sessions to UniversalSession format and merge
           const electronSessions: UniversalSession[] = result.sessions.map((s: any) => ({
             id: s.id,
             profileId: s.profileId,
@@ -142,7 +211,6 @@ export function SessionManagerView() {
             }
           }));
           
-          // Merge with existing sessions
           const existingIds = sessions.map(s => s.id);
           const newSessions = electronSessions.filter(s => !existingIds.includes(s.id));
           if (newSessions.length > 0) {
@@ -190,8 +258,17 @@ export function SessionManagerView() {
 
   const deleteSession = (sessionId: string) => {
     universalSessionService.deleteSession(sessionId);
+    if (selectedSession?.id === sessionId) {
+      setSelectedSession(null);
+    }
     loadData();
     toast.success('تم حذف الجلسة');
+  };
+
+  const deleteCredential = (credentialId: string) => {
+    universalSessionService.deleteCredential(credentialId);
+    loadData();
+    toast.success('تم حذف بيانات الاعتماد');
   };
 
   const exportSession = (session: UniversalSession) => {
@@ -293,6 +370,142 @@ export function SessionManagerView() {
     }
   };
 
+  const handleAddCredential = () => {
+    if (!newCredential.profileId || !newCredential.domain || !newCredential.username || !newCredential.password) {
+      toast.error('يرجى ملء جميع الحقول المطلوبة');
+      return;
+    }
+
+    try {
+      universalSessionService.saveCredential({
+        profileId: newCredential.profileId,
+        domain: newCredential.domain,
+        siteName: newCredential.siteName || newCredential.domain.split('.')[0],
+        username: newCredential.username,
+        email: newCredential.email,
+        password: newCredential.password,
+        loginUrl: newCredential.loginUrl || `https://${newCredential.domain}/login`,
+        autoLogin: newCredential.autoLogin,
+        twoFactorEnabled: newCredential.twoFactorEnabled,
+        loginMethod: 'form',
+        selectors: {
+          usernameField: ['input[type="email"]', 'input[name="email"]', 'input[name="username"]'],
+          passwordField: ['input[type="password"]'],
+          submitButton: ['button[type="submit"]', 'input[type="submit"]']
+        },
+        customData: {}
+      });
+      
+      loadData();
+      setShowAddCredentialDialog(false);
+      setNewCredential({
+        profileId: '',
+        domain: '',
+        siteName: '',
+        username: '',
+        email: '',
+        password: '',
+        loginUrl: '',
+        autoLogin: true,
+        twoFactorEnabled: false
+      });
+      toast.success('تم إضافة بيانات الاعتماد');
+    } catch (error) {
+      toast.error('فشل إضافة بيانات الاعتماد');
+    }
+  };
+
+  const handleAddSession = () => {
+    if (!newSession.profileId || !newSession.url) {
+      toast.error('يرجى ملء الحقول المطلوبة');
+      return;
+    }
+
+    try {
+      let cookies: any[] = [];
+      let localStorageData: Record<string, string> = {};
+      let sessionStorageData: Record<string, string> = {};
+
+      if (newSession.cookies) {
+        try {
+          cookies = JSON.parse(newSession.cookies);
+        } catch {
+          // Try parsing as cookie string format
+          cookies = newSession.cookies.split(';').map(c => {
+            const [name, value] = c.trim().split('=');
+            return {
+              name: name || '',
+              value: value || '',
+              domain: new URL(newSession.url).hostname,
+              path: '/',
+              secure: true,
+              httpOnly: false,
+              sameSite: 'Lax' as const,
+              size: (name?.length || 0) + (value?.length || 0)
+            };
+          }).filter(c => c.name);
+        }
+      }
+
+      if (newSession.localStorage) {
+        try {
+          localStorageData = JSON.parse(newSession.localStorage);
+        } catch {
+          toast.error('صيغة localStorage غير صالحة');
+          return;
+        }
+      }
+
+      if (newSession.sessionStorage) {
+        try {
+          sessionStorageData = JSON.parse(newSession.sessionStorage);
+        } catch {
+          toast.error('صيغة sessionStorage غير صالحة');
+          return;
+        }
+      }
+
+      universalSessionService.captureSession(
+        newSession.profileId,
+        newSession.url,
+        {
+          cookies,
+          localStorage: localStorageData,
+          sessionStorage: sessionStorageData
+        }
+      );
+
+      loadData();
+      setShowAddSessionDialog(false);
+      setNewSession({
+        profileId: '',
+        url: '',
+        cookies: '',
+        localStorage: '',
+        sessionStorage: ''
+      });
+      toast.success('تم إضافة الجلسة');
+    } catch (error) {
+      toast.error('فشل إضافة الجلسة');
+    }
+  };
+
+  const handleAutoLogin = async (credential: LoginCredential) => {
+    const script = universalSessionService.generateAutoLoginScript(credential);
+    copyToClipboard(script, 'سكريبت تسجيل الدخول');
+    toast.success('تم نسخ سكريبت تسجيل الدخول - قم بتنفيذه في البروفايل');
+    credential.lastUsed = new Date();
+    loadData();
+  };
+
+  const injectSession = async (session: UniversalSession) => {
+    const script = universalSessionService.generateSessionInjectionScript(session);
+    copyToClipboard(script, 'سكريبت حقن الجلسة');
+    toast.success('تم نسخ سكريبت حقن الجلسة - قم بتنفيذه في البروفايل');
+    session.lastUsed = new Date();
+    loadData();
+  };
+
   const filteredSessions = sessions.filter(s => 
     s.domain.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.siteName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -323,7 +536,7 @@ export function SessionManagerView() {
           </div>
           <div>
             <h1 className="text-2xl font-bold">إدارة الجلسات العالمية</h1>
-            <p className="text-muted-foreground">التقاط وإدارة جلسات كل المواقع تلقائياً</p>
+            <p className="text-muted-foreground">التقاط وإدارة جلسات كل المواقع</p>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -359,7 +572,7 @@ export function SessionManagerView() {
                 ) : (
                   <Camera className="w-4 h-4" />
                 )}
-                التقاط الجلسة
+                التقاط
               </Button>
             </div>
           )}
@@ -369,7 +582,7 @@ export function SessionManagerView() {
           </Button>
           <Button variant="outline" onClick={exportAllSessions} className="gap-2">
             <Download className="w-4 h-4" />
-            تصدير الكل
+            تصدير
           </Button>
         </div>
       </div>
@@ -446,10 +659,84 @@ export function SessionManagerView() {
             {/* Sessions List */}
             <Card className="glass-effect lg:col-span-2">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-5 h-5" />
-                  الجلسات المحفوظة
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="w-5 h-5" />
+                    الجلسات المحفوظة
+                  </CardTitle>
+                  <Dialog open={showAddSessionDialog} onOpenChange={setShowAddSessionDialog}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" className="gap-2">
+                        <Plus className="w-4 h-4" />
+                        إضافة جلسة
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>إضافة جلسة يدوياً</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label>البروفايل *</Label>
+                          <Select 
+                            value={newSession.profileId} 
+                            onValueChange={(v) => setNewSession(s => ({ ...s, profileId: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="اختر بروفايل" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {profiles.map(p => (
+                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>رابط الموقع *</Label>
+                          <Input
+                            placeholder="https://example.com"
+                            value={newSession.url}
+                            onChange={(e) => setNewSession(s => ({ ...s, url: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>الكوكيز (JSON أو format عادي)</Label>
+                          <Input
+                            placeholder='{"cookie_name": "value"} أو name=value; name2=value2'
+                            value={newSession.cookies}
+                            onChange={(e) => setNewSession(s => ({ ...s, cookies: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>localStorage (JSON)</Label>
+                          <Input
+                            placeholder='{"key": "value"}'
+                            value={newSession.localStorage}
+                            onChange={(e) => setNewSession(s => ({ ...s, localStorage: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>sessionStorage (JSON)</Label>
+                          <Input
+                            placeholder='{"key": "value"}'
+                            value={newSession.sessionStorage}
+                            onChange={(e) => setNewSession(s => ({ ...s, sessionStorage: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowAddSessionDialog(false)}>
+                          إلغاء
+                        </Button>
+                        <Button onClick={handleAddSession}>
+                          <Save className="w-4 h-4 ml-2" />
+                          حفظ
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[500px]">
@@ -458,7 +745,7 @@ export function SessionManagerView() {
                       <div className="text-center py-12 text-muted-foreground">
                         <Cookie className="w-12 h-12 mx-auto mb-4 opacity-50" />
                         <p>لا توجد جلسات محفوظة</p>
-                        <p className="text-sm mt-2">سيتم التقاط الجلسات تلقائياً عند تسجيل الدخول</p>
+                        <p className="text-sm mt-2">يمكنك إضافة جلسة يدوياً أو التقاطها من بروفايل نشط</p>
                       </div>
                     ) : (
                       filteredSessions.map((session) => (
@@ -503,13 +790,24 @@ export function SessionManagerView() {
                             </div>
                             <div className="p-2 rounded bg-background/50 text-center">
                               <p className="font-bold text-orange-400">
-                                {Math.floor((Date.now() - session.capturedAt.getTime()) / 60000)}
+                                {Math.floor((Date.now() - new Date(session.capturedAt).getTime()) / 60000)}
                               </p>
                               <p className="text-xs text-muted-foreground">دقيقة</p>
                             </div>
                           </div>
 
                           <div className="flex gap-2 mt-3">
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                injectSession(session);
+                              }}
+                            >
+                              <Play className="w-4 h-4" />
+                            </Button>
                             <Button 
                               size="sm" 
                               variant="outline" 
@@ -589,12 +887,12 @@ export function SessionManagerView() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">تاريخ الالتقاط</span>
-                            <span>{selectedSession.capturedAt.toLocaleString('ar-SA')}</span>
+                            <span>{new Date(selectedSession.capturedAt).toLocaleString('ar-SA')}</span>
                           </div>
                           {selectedSession.expiresAt && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">ينتهي في</span>
-                              <span>{selectedSession.expiresAt.toLocaleString('ar-SA')}</span>
+                              <span>{new Date(selectedSession.expiresAt).toLocaleString('ar-SA')}</span>
                             </div>
                           )}
                         </div>
@@ -711,10 +1009,111 @@ export function SessionManagerView() {
                   <Key className="w-5 h-5" />
                   بيانات الاعتماد المحفوظة
                 </CardTitle>
-                <Button size="sm" className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  إضافة جديد
-                </Button>
+                <Dialog open={showAddCredentialDialog} onOpenChange={setShowAddCredentialDialog}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      إضافة جديد
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>إضافة بيانات اعتماد</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>البروفايل *</Label>
+                        <Select 
+                          value={newCredential.profileId} 
+                          onValueChange={(v) => setNewCredential(s => ({ ...s, profileId: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="اختر بروفايل" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {profiles.map(p => (
+                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>الدومين *</Label>
+                          <Input
+                            placeholder="facebook.com"
+                            value={newCredential.domain}
+                            onChange={(e) => setNewCredential(s => ({ ...s, domain: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>اسم الموقع</Label>
+                          <Input
+                            placeholder="Facebook"
+                            value={newCredential.siteName}
+                            onChange={(e) => setNewCredential(s => ({ ...s, siteName: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>اسم المستخدم / البريد *</Label>
+                        <Input
+                          placeholder="user@example.com"
+                          value={newCredential.username}
+                          onChange={(e) => setNewCredential(s => ({ ...s, username: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>البريد الإلكتروني</Label>
+                        <Input
+                          placeholder="user@example.com"
+                          value={newCredential.email}
+                          onChange={(e) => setNewCredential(s => ({ ...s, email: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>كلمة المرور *</Label>
+                        <Input
+                          type="password"
+                          placeholder="********"
+                          value={newCredential.password}
+                          onChange={(e) => setNewCredential(s => ({ ...s, password: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>رابط تسجيل الدخول</Label>
+                        <Input
+                          placeholder="https://facebook.com/login"
+                          value={newCredential.loginUrl}
+                          onChange={(e) => setNewCredential(s => ({ ...s, loginUrl: e.target.value }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label>تسجيل دخول تلقائي</Label>
+                        <Switch
+                          checked={newCredential.autoLogin}
+                          onCheckedChange={(v) => setNewCredential(s => ({ ...s, autoLogin: v }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label>التحقق بخطوتين مفعل</Label>
+                        <Switch
+                          checked={newCredential.twoFactorEnabled}
+                          onCheckedChange={(v) => setNewCredential(s => ({ ...s, twoFactorEnabled: v }))}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowAddCredentialDialog(false)}>
+                        إلغاء
+                      </Button>
+                      <Button onClick={handleAddCredential}>
+                        <Save className="w-4 h-4 ml-2" />
+                        حفظ
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardHeader>
             <CardContent>
@@ -723,7 +1122,7 @@ export function SessionManagerView() {
                   <div className="text-center py-12 text-muted-foreground">
                     <Key className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p>لا توجد بيانات اعتماد محفوظة</p>
-                    <p className="text-sm mt-2">سيتم حفظها تلقائياً عند تسجيل الدخول</p>
+                    <p className="text-sm mt-2">يمكنك إضافتها يدوياً أو سيتم حفظها تلقائياً</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -805,14 +1204,24 @@ export function SessionManagerView() {
 
                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
                           <span className="text-xs text-muted-foreground">
-                            آخر استخدام: {cred.lastUsed?.toLocaleDateString('ar-SA') || 'لم يستخدم'}
+                            آخر استخدام: {cred.lastUsed ? new Date(cred.lastUsed).toLocaleDateString('ar-SA') : 'لم يستخدم'}
                           </span>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" className="gap-1">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="gap-1"
+                              onClick={() => handleAutoLogin(cred)}
+                            >
                               <Play className="w-3 h-3" />
                               تسجيل دخول
                             </Button>
-                            <Button size="sm" variant="ghost" className="text-destructive">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="text-destructive"
+                              onClick={() => deleteCredential(cred.id)}
+                            >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -860,7 +1269,7 @@ export function SessionManagerView() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">التقاط كل المواقع</p>
-                  <p className="text-sm text-muted-foreground">التقاط الجلسات من أي موقع (بدون قائمة محددة)</p>
+                  <p className="text-sm text-muted-foreground">التقاط الجلسات من أي موقع</p>
                 </div>
                 <Switch
                   checked={settings.captureAllSites}
@@ -927,7 +1336,19 @@ export function SessionManagerView() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-border">
+              <div className="pt-4 border-t border-border space-y-3">
+                <Button 
+                  variant="outline" 
+                  className="w-full gap-2"
+                  onClick={() => {
+                    universalSessionService.refreshAllSessionStatus();
+                    loadData();
+                    toast.success('تم تحديث جميع الجلسات');
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  تحديث جميع الجلسات
+                </Button>
                 <Button 
                   variant="destructive" 
                   className="w-full"
