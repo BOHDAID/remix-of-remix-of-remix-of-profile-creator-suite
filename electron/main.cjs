@@ -600,19 +600,25 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     args.push(`--proxy-server=${proxy.type}://${proxy.host}:${proxy.port}`);
   }
 
-  // Built-in extensions path (session capture extension)
+  // Built-in extensions paths
   const builtInExtensions = [];
   
-  // Add session capture extension
-  const sessionCaptureExt = path.join(__dirname, '..', 'public', 'extensions', 'session-capture');
-  // Also check in resources for production
-  const sessionCaptureExtProd = path.join(process.resourcesPath || '', 'public', 'extensions', 'session-capture');
-  
-  if (fs.existsSync(sessionCaptureExt)) {
-    builtInExtensions.push(sessionCaptureExt);
-  } else if (fs.existsSync(sessionCaptureExtProd)) {
-    builtInExtensions.push(sessionCaptureExtProd);
+  // Helper function to add extension if exists
+  function addBuiltInExtension(folderName) {
+    const devPath = path.join(__dirname, '..', 'public', 'extensions', folderName);
+    const prodPath = path.join(process.resourcesPath || '', 'public', 'extensions', folderName);
+    
+    if (fs.existsSync(devPath)) {
+      builtInExtensions.push(devPath);
+    } else if (fs.existsSync(prodPath)) {
+      builtInExtensions.push(prodPath);
+    }
   }
+  
+  // Add all built-in extensions
+  addBuiltInExtension('auto-login');        // تسجيل الدخول التلقائي
+  addBuiltInExtension('session-capture');   // التقاط الجلسات
+  addBuiltInExtension('captcha-solver');    // حل CAPTCHA
   
   // Collect all extension paths
   let allExtensionPaths = [...builtInExtensions];

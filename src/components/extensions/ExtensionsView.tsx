@@ -31,7 +31,8 @@ import {
   Eye,
   Shield,
   CheckCircle2,
-  Package
+  Package,
+  LogIn
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,16 @@ interface BuiltInExtension {
 }
 
 const BUILT_IN_EXTENSIONS: BuiltInExtension[] = [
+  {
+    id: 'auto-login',
+    name: 'تسجيل الدخول التلقائي',
+    description: 'حفظ بيانات الدخول وتسجيل الدخول تلقائياً لأي موقع',
+    icon: <LogIn className="w-6 h-6" />,
+    color: 'from-green-500 to-emerald-500',
+    features: ['حفظ كلمات المرور', 'تسجيل دخول تلقائي', 'ملء النماذج', 'دعم جميع المواقع'],
+    status: 'active',
+    folder: 'auto-login'
+  },
   {
     id: 'session-capture',
     name: 'التقاط الجلسات',
