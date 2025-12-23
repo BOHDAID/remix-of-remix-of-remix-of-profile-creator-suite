@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Eye, 
   EyeOff,
@@ -73,6 +73,13 @@ export function VisionMonitorView() {
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [isLoadingSources, setIsLoadingSources] = useState(false);
   const [showSourceSelector, setShowSourceSelector] = useState(false);
+  
+  // Live preview state
+  const [livePreviewImage, setLivePreviewImage] = useState<string | null>(null);
+  const [isLivePreviewActive, setIsLivePreviewActive] = useState(false);
+  const [livePreviewFps, setLivePreviewFps] = useState(0);
+  const [lastCaptureTime, setLastCaptureTime] = useState<Date | null>(null);
+  const livePreviewIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     const unsubscribe = visionMonitor.subscribe((event: VisionEvent) => {
@@ -207,6 +214,72 @@ export function VisionMonitorView() {
     }
     setShowSourceSelector(false);
   };
+
+  // Start/Stop live preview
+  const toggleLivePreview = useCallback(async () => {
+    if (isLivePreviewActive) {
+      // Stop live preview
+      if (livePreviewIntervalRef.current) {
+        clearInterval(livePreviewIntervalRef.current);
+        livePreviewIntervalRef.current = null;
+      }
+      await visionMonitor.stopContinuousCapture();
+      setIsLivePreviewActive(false);
+      setLivePreviewImage(null);
+      toast.success('تم إيقاف المعاينة المباشرة');
+    } else {
+      // Start live preview
+      if (!visionMonitor.isRealCaptureAvailable()) {
+        toast.error('المعاينة المباشرة تعمل فقط في تطبيق Electron');
+        return;
+      }
+
+      setIsLivePreviewActive(true);
+      let frameCount = 0;
+      let lastFpsUpdate = Date.now();
+
+      // Capture function
+      const captureFrame = async () => {
+        try {
+          const { electronAPI } = await import('@/lib/electron');
+          if (electronAPI) {
+            const result = await electronAPI.captureScreen();
+            if (result.success && result.capture) {
+              setLivePreviewImage(result.capture.imageData);
+              setLastCaptureTime(new Date());
+              frameCount++;
+
+              // Update FPS every second
+              const now = Date.now();
+              if (now - lastFpsUpdate >= 1000) {
+                setLivePreviewFps(frameCount);
+                frameCount = 0;
+                lastFpsUpdate = now;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Live preview capture error:', error);
+        }
+      };
+
+      // Initial capture
+      await captureFrame();
+
+      // Set interval for continuous capture (1 second)
+      livePreviewIntervalRef.current = window.setInterval(captureFrame, 1000);
+      toast.success('تم تفعيل المعاينة المباشرة');
+    }
+  }, [isLivePreviewActive]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (livePreviewIntervalRef.current) {
+        clearInterval(livePreviewIntervalRef.current);
+      }
+    };
+  }, []);
 
   const getElementIcon = (type: DetectedElement['type']) => {
     const icons = {
@@ -471,6 +544,112 @@ export function VisionMonitorView() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Live Preview Section */}
+          <Card className="glass-card border-cyan-500/30">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <div className="relative">
+                    <Camera className="w-5 h-5 text-cyan-500" />
+                    {isLivePreviewActive && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    )}
+                  </div>
+                  المعاينة المباشرة
+                  {isLivePreviewActive && (
+                    <Badge className="bg-red-500/20 text-red-500 animate-pulse">
+                      ● LIVE
+                    </Badge>
+                  )}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {isLivePreviewActive && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{livePreviewFps} FPS</span>
+                      {lastCaptureTime && (
+                        <span>آخر التقاط: {lastCaptureTime.toLocaleTimeString('ar-SA')}</span>
+                      )}
+                    </div>
+                  )}
+                  <Button
+                    variant={isLivePreviewActive ? "destructive" : "glow"}
+                    size="sm"
+                    onClick={toggleLivePreview}
+                    disabled={!visionMonitor.isRealCaptureAvailable()}
+                  >
+                    {isLivePreviewActive ? (
+                      <>
+                        <Pause className="w-4 h-4 ml-2" />
+                        إيقاف
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 ml-2" />
+                        تشغيل
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {!visionMonitor.isRealCaptureAvailable() && (
+                <p className="text-xs text-yellow-500 mt-2">
+                  المعاينة المباشرة تتطلب تطبيق Electron للعمل
+                </p>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="relative rounded-lg overflow-hidden bg-black/50 border border-border">
+                {livePreviewImage ? (
+                  <div className="relative">
+                    <img 
+                      src={livePreviewImage} 
+                      alt="Live Preview"
+                      className="w-full h-auto max-h-[400px] object-contain"
+                    />
+                    {/* Overlay with detected elements highlight */}
+                    {detectedElements.length > 0 && config.highlightElements && (
+                      <div className="absolute inset-0 pointer-events-none">
+                        {detectedElements.slice(0, 5).map((element, i) => (
+                          <div
+                            key={element.id}
+                            className="absolute border-2 border-cyan-500 bg-cyan-500/10 rounded"
+                            style={{
+                              left: `${(element.bounds.x / 1920) * 100}%`,
+                              top: `${(element.bounds.y / 1080) * 100}%`,
+                              width: `${(element.bounds.width / 1920) * 100}%`,
+                              height: `${(element.bounds.height / 1080) * 100}%`,
+                            }}
+                          >
+                            <span className="absolute -top-5 left-0 text-[10px] bg-cyan-500 text-white px-1 rounded">
+                              {element.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Live indicator overlay */}
+                    {isLivePreviewActive && (
+                      <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/70 rounded-full px-3 py-1">
+                        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                        <span className="text-xs text-white">LIVE</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="aspect-video flex flex-col items-center justify-center text-muted-foreground">
+                    <Monitor className="w-16 h-16 mb-4 opacity-30" />
+                    <p className="text-sm">اضغط على "تشغيل" لبدء المعاينة المباشرة</p>
+                    {selectedSource && (
+                      <p className="text-xs mt-2 text-cyan-500">
+                        المصدر المحدد: {captureSources.find(s => s.id === selectedSource)?.name || selectedSource}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* CAPTCHA Solver Integration Status */}
           <Card className="glass-card border-orange-500/30">
