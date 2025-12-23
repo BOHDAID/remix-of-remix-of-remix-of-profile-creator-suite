@@ -26,13 +26,43 @@ import { CaptchaSolverView } from '@/components/captcha/CaptchaSolverView';
 import { VisionMonitorView } from '@/components/vision/VisionMonitorView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
-import { isElectron } from '@/lib/electron';
+import { isElectron, getElectronAPI } from '@/lib/electron';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 
 export default function Index() {
-  const { activeView, settings } = useAppStore();
+  const { activeView, settings, updateProfile, profiles } = useAppStore();
   const { isRTL } = useTranslation();
+  const electronAPI = getElectronAPI();
+  
+  // Use refs to avoid re-registering listeners on every profiles change
+  const profilesRef = useRef(profiles);
+  const updateProfileRef = useRef(updateProfile);
+  
+  // Keep refs updated
+  useEffect(() => {
+    profilesRef.current = profiles;
+    updateProfileRef.current = updateProfile;
+  }, [profiles, updateProfile]);
+
+  // Listen for profile-closed event from Electron (when browser is closed manually)
+  useEffect(() => {
+    if (!isElectron() || !electronAPI) return;
+
+    const handleProfileClosed = (profileId: string) => {
+      // Use refs to get latest values
+      const currentProfiles = profilesRef.current;
+      const profile = currentProfiles.find(p => p.id === profileId);
+      if (profile && profile.status === 'running') {
+        updateProfileRef.current(profileId, { status: 'stopped' });
+        toast.info(`تم إغلاق المتصفح: ${profile.name}`);
+      }
+    };
+
+    // Subscribe to profile closed events - only once
+    electronAPI.onProfileClosed(handleProfileClosed);
+  }, [electronAPI]); // Only depend on electronAPI
 
   useEffect(() => {
     document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
