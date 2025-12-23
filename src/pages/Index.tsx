@@ -22,6 +22,7 @@ import { BehavioralSimulationView } from '@/components/behavioral/BehavioralSimu
 import { SessionManagerView } from '@/components/session/SessionManagerView';
 import { IdentityDNAView } from '@/components/dna/IdentityDNAView';
 import { QuickSessionsPanel } from '@/components/session/QuickSessionsPanel';
+import { CaptchaSolverView } from '@/components/captcha/CaptchaSolverView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -56,6 +57,7 @@ export default function Index() {
       case 'schedule': return <ScheduleView />;
       case 'leakTest': return <LeakTestView />;
       case 'aiHub': return <AIHubView />;
+      case 'captcha': return <CaptchaSolverView />;
       case 'identity': return <IdentityGeneratorView />;
       case 'fingerprint': return <AdvancedFingerprintView />;
       case 'autonomous': return <AutonomousModeView />;

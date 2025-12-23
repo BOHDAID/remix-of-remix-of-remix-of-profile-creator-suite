@@ -11,13 +11,17 @@ import {
   Puzzle,
   Loader2,
   Lock,
-  Copy
+  Copy,
+  Bot
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isElectron, getElectronAPI } from '@/lib/electron';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
+import { captchaSolver } from '@/lib/captchaSolver';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ProfileCardProps {
   profile: Profile;
@@ -28,10 +32,36 @@ interface ProfileCardProps {
 export function ProfileCard({ profile, onEdit, onClone }: ProfileCardProps) {
   const { updateProfile, deleteProfile, extensions, settings, license, profiles, setActiveView } = useAppStore();
   const [launching, setLaunching] = useState(false);
+  const [autoCaptcha, setAutoCaptcha] = useState(false);
   const electronAPI = getElectronAPI();
 
   // التحقق من حالة الترخيص
   const licenseCheck = checkLicenseStatus(license, profiles.length);
+
+  // Manage CAPTCHA solver session
+  useEffect(() => {
+    if (profile.status === 'running' && autoCaptcha) {
+      captchaSolver.startSession(profile.id);
+    } else {
+      captchaSolver.stopSession(profile.id);
+    }
+    
+    return () => {
+      captchaSolver.stopSession(profile.id);
+    };
+  }, [profile.status, autoCaptcha, profile.id]);
+
+  const toggleAutoCaptcha = () => {
+    const newValue = !autoCaptcha;
+    setAutoCaptcha(newValue);
+    
+    if (newValue) {
+      captchaSolver.updateConfig({ enabled: true });
+      toast.success('تم تفعيل حل CAPTCHA التلقائي');
+    } else {
+      toast.info('تم إيقاف حل CAPTCHA التلقائي');
+    }
+  };
 
   const handleStart = async () => {
     // التحقق من الترخيص أولاً
@@ -219,6 +249,31 @@ export function ProfileCard({ profile, onEdit, onClone }: ProfileCardProps) {
           )}
         </div>
       )}
+
+      {/* Auto CAPTCHA Toggle */}
+      <div className="flex items-center justify-between mb-4 p-2 bg-muted/30 rounded-lg">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 cursor-help">
+                <Bot className={cn(
+                  "w-4 h-4",
+                  autoCaptcha ? "text-primary" : "text-muted-foreground"
+                )} />
+                <span className="text-sm">حل CAPTCHA تلقائي</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>يحل CAPTCHA تلقائياً عند اكتشافها أثناء التصفح</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <Switch
+          checked={autoCaptcha}
+          onCheckedChange={toggleAutoCaptcha}
+          className="scale-75"
+        />
+      </div>
 
       {/* Notes */}
       {profile.notes && (
