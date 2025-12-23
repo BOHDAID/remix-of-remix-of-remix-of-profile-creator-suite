@@ -13,23 +13,39 @@ export function HorizontalScrollActions({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [canScroll, setCanScroll] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
     const update = () => {
-      setCanScroll(el.scrollWidth > el.clientWidth + 2);
+      const hasOverflow = el.scrollWidth > el.clientWidth + 2;
+      if (!hasOverflow) {
+        setCanScrollLeft(false);
+        setCanScrollRight(false);
+        return;
+      }
+      setCanScrollLeft(el.scrollLeft > 0);
+      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
     };
 
+    // initial + after layout settles
     update();
+    requestAnimationFrame(update);
+    const t = window.setTimeout(update, 150);
+
     const ro = new ResizeObserver(update);
     ro.observe(el);
     window.addEventListener("resize", update);
+    el.addEventListener("scroll", update, { passive: true });
+
     return () => {
+      window.clearTimeout(t);
       ro.disconnect();
       window.removeEventListener("resize", update);
+      el.removeEventListener("scroll", update);
     };
   }, []);
 
@@ -52,16 +68,18 @@ export function HorizontalScrollActions({
         {children}
       </div>
 
-      {canScroll && (
+      {(canScrollLeft || canScrollRight) && (
         <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between">
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={() => scroll("left")}
+            disabled={!canScrollLeft}
             className={cn(
               "pointer-events-auto h-8 w-8 rounded-full border border-border",
-              "bg-background/80 backdrop-blur shadow-sm"
+              "bg-background/80 backdrop-blur shadow-sm",
+              "disabled:opacity-40",
             )}
             aria-label="تمرير يسار"
           >
@@ -73,9 +91,11 @@ export function HorizontalScrollActions({
             variant="ghost"
             size="icon"
             onClick={() => scroll("right")}
+            disabled={!canScrollRight}
             className={cn(
               "pointer-events-auto h-8 w-8 rounded-full border border-border",
-              "bg-background/80 backdrop-blur shadow-sm"
+              "bg-background/80 backdrop-blur shadow-sm",
+              "disabled:opacity-40",
             )}
             aria-label="تمرير يمين"
           >
