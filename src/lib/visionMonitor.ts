@@ -1,4 +1,5 @@
 // AI Vision Monitor - Screen Monitoring System with AI Eyes
+import { captchaSolver } from './captchaSolver';
 
 export interface ScreenCapture {
   id: string;
@@ -438,7 +439,12 @@ class AIVisionMonitor {
     try {
       this.emit({ type: 'action_started', action, profileId });
       
-      // Simulate action execution
+      // Check if this is a CAPTCHA solving action
+      if (action.target?.type === 'captcha') {
+        return await this.triggerCaptchaSolver(profileId, action.target);
+      }
+      
+      // Simulate other action execution
       await new Promise(r => setTimeout(r, 500));
       
       session.actionsPerformed++;
@@ -449,6 +455,65 @@ class AIVisionMonitor {
       return true;
     } catch (error) {
       this.emit({ type: 'action_completed', action, profileId, success: false });
+      return false;
+    }
+  }
+
+  // Trigger CAPTCHA Solver when detected
+  private async triggerCaptchaSolver(profileId: string, captchaElement: DetectedElement): Promise<boolean> {
+    const session = this.sessions.get(profileId);
+    if (!session) return false;
+
+    try {
+      // Start CAPTCHA solver session if not active
+      let solverSession = captchaSolver.getSession(profileId);
+      if (!solverSession) {
+        solverSession = captchaSolver.startSession(profileId);
+      }
+
+      // Enable solver if disabled
+      if (!captchaSolver.isEnabled()) {
+        captchaSolver.setEnabled(true);
+      }
+
+      // Detect CAPTCHA type
+      const captchaType = await captchaSolver.detectCaptcha(profileId);
+      
+      if (captchaType) {
+        // Solve CAPTCHA
+        const solved = await captchaSolver.solveCaptcha(profileId, captchaType);
+        
+        session.actionsPerformed++;
+        this.stats.actionsPerformed++;
+        
+        this.emit({ 
+          type: 'action_completed', 
+          action: { action: 'حل CAPTCHA تلقائياً', priority: 'high', target: captchaElement },
+          profileId, 
+          success: solved 
+        });
+
+        // Emit special CAPTCHA solved event
+        this.emit({
+          type: 'captcha_solved',
+          profileId,
+          captchaType,
+          success: solved,
+        } as VisionEvent);
+        
+        this.saveToStorage();
+        return solved;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('CAPTCHA solver error:', error);
+      this.emit({ 
+        type: 'action_completed', 
+        action: { action: 'حل CAPTCHA تلقائياً', priority: 'high', target: captchaElement },
+        profileId, 
+        success: false 
+      });
       return false;
     }
   }
@@ -513,7 +578,8 @@ export type VisionEvent =
   | { type: 'action_started'; action: AIAnalysisResult['suggestedActions'][0]; profileId: string }
   | { type: 'action_completed'; action: AIAnalysisResult['suggestedActions'][0]; profileId: string; success: boolean }
   | { type: 'config_updated'; config: VisionMonitorConfig }
-  | { type: 'stats_reset' };
+  | { type: 'stats_reset' }
+  | { type: 'captcha_solved'; profileId: string; captchaType: string; success: boolean };
 
 // Singleton instance
 export const visionMonitor = new AIVisionMonitor();
