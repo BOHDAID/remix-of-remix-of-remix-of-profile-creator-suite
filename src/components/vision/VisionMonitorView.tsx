@@ -67,6 +67,12 @@ export function VisionMonitorView() {
   const [detectedElements, setDetectedElements] = useState<DetectedElement[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  
+  // Capture sources state
+  const [captureSources, setCaptureSources] = useState<{ id: string; name: string; type: string; thumbnail: string }[]>([]);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const [showSourceSelector, setShowSourceSelector] = useState(false);
 
   useEffect(() => {
     const unsubscribe = visionMonitor.subscribe((event: VisionEvent) => {
@@ -168,6 +174,40 @@ export function VisionMonitorView() {
     toast.success('تم إعادة تعيين البيانات');
   };
 
+  // Load available capture sources
+  const loadCaptureSources = useCallback(async () => {
+    if (!visionMonitor.isRealCaptureAvailable()) {
+      toast.error('التقاط الشاشة الحقيقي متاح فقط في تطبيق Electron');
+      return;
+    }
+
+    setIsLoadingSources(true);
+    try {
+      const sources = await visionMonitor.getCaptureSources();
+      setCaptureSources(sources);
+      setShowSourceSelector(true);
+      
+      if (sources.length === 0) {
+        toast.error('لم يتم العثور على مصادر التقاط');
+      } else {
+        toast.success(`تم العثور على ${sources.length} مصدر`);
+      }
+    } catch (error) {
+      toast.error('فشل في تحميل مصادر الالتقاط');
+    } finally {
+      setIsLoadingSources(false);
+    }
+  }, []);
+
+  const selectCaptureSource = (sourceId: string) => {
+    setSelectedSource(sourceId);
+    const source = captureSources.find(s => s.id === sourceId);
+    if (source) {
+      toast.success(`تم اختيار: ${source.name}`);
+    }
+    setShowSourceSelector(false);
+  };
+
   const getElementIcon = (type: DetectedElement['type']) => {
     const icons = {
       button: '🔘',
@@ -226,6 +266,23 @@ export function VisionMonitorView() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Source Selector Button */}
+          {visionMonitor.isRealCaptureAvailable() && (
+            <Button
+              variant="outline"
+              onClick={loadCaptureSources}
+              disabled={isLoadingSources}
+              className="gap-2"
+            >
+              {isLoadingSources ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Monitor className="w-4 h-4" />
+              )}
+              {selectedSource ? 'تغيير المصدر' : 'اختيار المصدر'}
+            </Button>
+          )}
+          
           <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-4 py-2">
             <Eye className={cn("w-4 h-4", config.enabled ? "text-cyan-500" : "text-muted-foreground")} />
             <span className="text-sm">تفعيل العيون</span>
@@ -248,6 +305,96 @@ export function VisionMonitorView() {
           </Button>
         </div>
       </div>
+
+      {/* Source Selector Modal */}
+      {showSourceSelector && (
+        <Card className="glass-card border-cyan-500/30">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Layers className="w-5 h-5 text-cyan-500" />
+                اختر مصدر الالتقاط
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSourceSelector(false)}
+              >
+                <XCircle className="w-4 h-4" />
+              </Button>
+            </div>
+            <CardDescription>
+              اختر الشاشة أو النافذة التي تريد مراقبتها
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {captureSources.map((source) => (
+                <div
+                  key={source.id}
+                  onClick={() => selectCaptureSource(source.id)}
+                  className={cn(
+                    "cursor-pointer rounded-lg border-2 overflow-hidden transition-all hover:scale-105",
+                    selectedSource === source.id 
+                      ? "border-cyan-500 ring-2 ring-cyan-500/30" 
+                      : "border-border hover:border-cyan-500/50"
+                  )}
+                >
+                  <div className="aspect-video bg-muted relative">
+                    {source.thumbnail && source.thumbnail !== 'data:image/png;base64,' ? (
+                      <img 
+                        src={source.thumbnail} 
+                        alt={source.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        {source.type === 'screen' ? (
+                          <Monitor className="w-8 h-8 text-muted-foreground" />
+                        ) : (
+                          <Layers className="w-8 h-8 text-muted-foreground" />
+                        )}
+                      </div>
+                    )}
+                    {selectedSource === source.id && (
+                      <div className="absolute top-2 right-2">
+                        <CheckCircle2 className="w-5 h-5 text-cyan-500" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2 bg-muted/50">
+                    <p className="text-xs font-medium truncate">{source.name}</p>
+                    <Badge 
+                      variant="secondary" 
+                      className={cn(
+                        "text-[10px] mt-1",
+                        source.type === 'screen' ? "bg-blue-500/20 text-blue-500" : "bg-purple-500/20 text-purple-500"
+                      )}
+                    >
+                      {source.type === 'screen' ? 'شاشة' : 'نافذة'}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {captureSources.length === 0 && !isLoadingSources && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Monitor className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>لم يتم العثور على مصادر التقاط</p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={loadCaptureSources}
+                >
+                  <RefreshCw className="w-4 h-4 ml-2" />
+                  إعادة البحث
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Scan Progress */}
       {isScanning && (
