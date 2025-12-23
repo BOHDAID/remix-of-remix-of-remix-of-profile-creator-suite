@@ -1,13 +1,82 @@
 import * as React from "react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
-      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
-    </div>
-  ),
+  ({ className, ...props }, ref) => {
+    const containerRef = React.useRef<HTMLDivElement | null>(null);
+    const [canScroll, setCanScroll] = React.useState(false);
+
+    React.useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+
+      const update = () => {
+        setCanScroll(el.scrollWidth > el.clientWidth + 2);
+      };
+
+      update();
+      const ro = new ResizeObserver(update);
+      ro.observe(el);
+      window.addEventListener("resize", update);
+      return () => {
+        ro.disconnect();
+        window.removeEventListener("resize", update);
+      };
+    }, []);
+
+    const scroll = (dir: "left" | "right") => {
+      const el = containerRef.current;
+      if (!el) return;
+      const delta = dir === "left" ? -260 : 260;
+      el.scrollBy({ left: delta, behavior: "smooth" });
+    };
+
+    return (
+      <div className="relative w-full">
+        <div
+          ref={containerRef}
+          className="w-full overflow-auto [scrollbar-width:thin]"
+        >
+          <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+        </div>
+
+        {canScroll && (
+          <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => scroll("left")}
+              className={cn(
+                "pointer-events-auto h-8 w-8 rounded-full border border-border",
+                "bg-background/80 backdrop-blur shadow-sm",
+              )}
+              aria-label="تمرير يسار"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => scroll("right")}
+              className={cn(
+                "pointer-events-auto h-8 w-8 rounded-full border border-border",
+                "bg-background/80 backdrop-blur shadow-sm",
+              )}
+              aria-label="تمرير يمين"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  },
 );
 Table.displayName = "Table";
 
