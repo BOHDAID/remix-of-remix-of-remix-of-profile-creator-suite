@@ -555,6 +555,10 @@ ipcMain.handle('get-running-profiles', () => {
 ipcMain.handle('tile-profile-windows', async (event, layout) => {
   const { screen } = require('electron');
   const { exec } = require('child_process');
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  
   const displays = screen.getAllDisplays();
   const primaryDisplay = displays[0];
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
@@ -603,7 +607,7 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
       return { success: false, error: 'لا توجد نوافذ متاحة' };
     }
 
-    // PowerShell script to move and resize windows
+    // Create PowerShell script file to avoid here-string issues
     const psScript = `
 Add-Type @"
 using System;
@@ -656,8 +660,15 @@ foreach ($win in $windows) {
 }
 `;
 
+    // Write script to temp file
+    const tempScriptPath = path.join(os.tmpdir(), 'tile-windows.ps1');
+    fs.writeFileSync(tempScriptPath, psScript, 'utf8');
+
     return new Promise((resolve) => {
-      exec(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, (error, stdout, stderr) => {
+      exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error, stdout, stderr) => {
+        // Clean up temp file
+        try { fs.unlinkSync(tempScriptPath); } catch (e) {}
+        
         if (error) {
           console.log('Tile error:', error);
           console.log('stderr:', stderr);
