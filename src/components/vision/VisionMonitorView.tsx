@@ -44,6 +44,7 @@ import {
   DetectedElement,
   AIAnalysisResult
 } from '@/lib/visionMonitor';
+import { captchaSolver } from '@/lib/captchaSolver';
 
 interface ActivityLog {
   id: string;
@@ -103,6 +104,15 @@ export function VisionMonitorView() {
         log.message = event.success ? 'تم تنفيذ الإجراء بنجاح' : 'فشل تنفيذ الإجراء';
         log.status = event.success ? 'success' : 'error';
         if (event.success) toast.success('تم تنفيذ الإجراء');
+        break;
+      case 'captcha_solved':
+        log.message = event.success 
+          ? `✅ تم حل CAPTCHA (${event.captchaType}) تلقائياً` 
+          : `❌ فشل حل CAPTCHA (${event.captchaType})`;
+        log.status = event.success ? 'success' : 'error';
+        if (event.success) {
+          toast.success(`تم حل ${event.captchaType} تلقائياً بواسطة AI`);
+        }
         break;
       default:
         return;
@@ -305,6 +315,53 @@ export function VisionMonitorView() {
               </CardContent>
             </Card>
           </div>
+
+          {/* CAPTCHA Solver Integration Status */}
+          <Card className="glass-card border-orange-500/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                  <span className="text-white text-sm">🤖</span>
+                </div>
+                ربط CAPTCHA Solver
+                <Badge className={captchaSolver.isEnabled() ? "bg-green-500/20 text-green-500" : "bg-gray-500/20 text-gray-500"}>
+                  {captchaSolver.isEnabled() ? "متصل" : "غير متصل"}
+                </Badge>
+              </CardTitle>
+              <CardDescription>
+                عند اكتشاف CAPTCHA، يتم تفعيل حل CAPTCHA تلقائياً
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <p className="text-2xl font-bold text-orange-500">{captchaSolver.getStats().totalAttempts}</p>
+                  <p className="text-xs text-muted-foreground">محاولات</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <p className="text-2xl font-bold text-green-500">{captchaSolver.getStats().successfulSolves}</p>
+                  <p className="text-xs text-muted-foreground">نجاح</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <p className="text-2xl font-bold text-cyan-500">{captchaSolver.getStats().successRate.toFixed(0)}%</p>
+                  <p className="text-xs text-muted-foreground">معدل النجاح</p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-orange-500/10 to-cyan-500/10 border border-orange-500/20">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-cyan-500" />
+                  <span className="text-sm">اكتشاف تلقائي</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">→</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🤖</span>
+                    <span className="text-sm">حل CAPTCHA</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Current Analysis */}
           <div className="grid grid-cols-2 gap-6">
