@@ -68,6 +68,10 @@ export function VisionMonitorView() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   
+  // Profile selection for monitoring
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const runningProfiles = profiles.filter(p => p.status === 'running');
+  
   // Capture sources state
   const [captureSources, setCaptureSources] = useState<{ id: string; name: string; type: string; thumbnail: string }[]>([]);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
@@ -146,6 +150,17 @@ export function VisionMonitorView() {
       return;
     }
 
+    if (!selectedProfileId) {
+      toast.error('يرجى اختيار بروفايل للمراقبة أولاً');
+      return;
+    }
+
+    const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+    if (!selectedProfile || selectedProfile.status !== 'running') {
+      toast.error('البروفايل المختار غير نشط');
+      return;
+    }
+
     setIsScanning(true);
     setScanProgress(0);
 
@@ -155,22 +170,24 @@ export function VisionMonitorView() {
       await new Promise(r => setTimeout(r, 200));
     }
 
-    // Run actual detection
-    const testSession = visionMonitor.startSession('manual_scan');
-    const capture = await visionMonitor.captureScreen('manual_scan');
+    // Run actual detection on the selected profile's window
+    const testSession = visionMonitor.startSession(selectedProfileId);
+    const capture = await visionMonitor.captureProfileWindow(selectedProfileId);
     
     if (capture) {
-      const analysis = await visionMonitor.analyzeCapture('manual_scan', capture);
+      const analysis = await visionMonitor.analyzeCapture(selectedProfileId, capture);
       if (analysis) {
         setCurrentAnalysis(analysis);
         setDetectedElements(analysis.elements);
-        toast.success(`تم اكتشاف ${analysis.elements.length} عنصر`);
+        toast.success(`تم اكتشاف ${analysis.elements.length} عنصر في ${selectedProfile.name}`);
       }
+    } else {
+      toast.error('فشل التقاط نافذة البروفايل');
     }
 
-    visionMonitor.stopSession('manual_scan');
+    visionMonitor.stopSession(selectedProfileId);
     setIsScanning(false);
-  }, [config.enabled]);
+  }, [config.enabled, selectedProfileId, profiles]);
 
   const handleReset = () => {
     visionMonitor.resetStats();
@@ -234,16 +251,30 @@ export function VisionMonitorView() {
         return;
       }
 
+      // Check if a profile is selected for monitoring
+      if (!selectedProfileId) {
+        toast.error('يرجى اختيار بروفايل للمراقبة أولاً');
+        return;
+      }
+
+      // Verify the profile is running
+      const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+      if (!selectedProfile || selectedProfile.status !== 'running') {
+        toast.error('البروفايل المختار غير نشط');
+        return;
+      }
+
       setIsLivePreviewActive(true);
       let frameCount = 0;
       let lastFpsUpdate = Date.now();
 
-      // Capture function
+      // Capture function - captures profile window instead of entire screen
       const captureFrame = async () => {
         try {
           const { electronAPI } = await import('@/lib/electron');
-          if (electronAPI) {
-            const result = await electronAPI.captureScreen();
+          if (electronAPI && selectedProfileId) {
+            // Use captureProfileWindow instead of captureScreen
+            const result = await electronAPI.captureProfileWindow(selectedProfileId);
             if (result.success && result.capture) {
               setLivePreviewImage(result.capture.imageData);
               setLastCaptureTime(new Date());
@@ -268,9 +299,9 @@ export function VisionMonitorView() {
 
       // Set interval for continuous capture (1 second)
       livePreviewIntervalRef.current = window.setInterval(captureFrame, 1000);
-      toast.success('تم تفعيل المعاينة المباشرة');
+      toast.success(`تم تفعيل المراقبة للبروفايل: ${selectedProfile.name}`);
     }
-  }, [isLivePreviewActive]);
+  }, [isLivePreviewActive, selectedProfileId, profiles]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -338,7 +369,29 @@ export function VisionMonitorView() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Profile Selector for monitoring */}
+          {visionMonitor.isRealCaptureAvailable() && (
+            <Select value={selectedProfileId || ''} onValueChange={setSelectedProfileId}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="اختر بروفايل للمراقبة" />
+              </SelectTrigger>
+              <SelectContent>
+                {runningProfiles.length === 0 ? (
+                  <SelectItem value="none" disabled>
+                    لا توجد بروفايلات نشطة
+                  </SelectItem>
+                ) : (
+                  runningProfiles.map(profile => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Source Selector Button */}
           {visionMonitor.isRealCaptureAvailable() && (
             <Button
@@ -367,7 +420,7 @@ export function VisionMonitorView() {
           <Button
             variant="glow"
             onClick={runManualScan}
-            disabled={isScanning || !config.enabled}
+            disabled={isScanning || !config.enabled || !selectedProfileId}
           >
             {isScanning ? (
               <RefreshCw className="w-4 h-4 animate-spin ml-2" />
