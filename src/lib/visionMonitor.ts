@@ -1,6 +1,6 @@
 // AI Vision Monitor - Screen Monitoring System with AI Eyes
 import { captchaSolver } from './captchaSolver';
-
+import { isElectron, electronAPI, ScreenCaptureData } from './electron';
 export interface ScreenCapture {
   id: string;
   timestamp: Date;
@@ -191,15 +191,29 @@ class AIVisionMonitor {
     if (!session || !session.isActive) return null;
 
     try {
-      // Simulate screen capture (in real Electron app, this would use desktopCapturer)
-      const capture: ScreenCapture = {
-        id: `capture_${Date.now()}`,
-        timestamp: new Date(),
-        imageData: await this.getScreenshot(),
-        width: window.innerWidth,
-        height: window.innerHeight,
-        source: 'browser',
-      };
+      let capture: ScreenCapture;
+
+      // Use real Electron screen capture if available
+      if (isElectron() && electronAPI) {
+        const result = await electronAPI.captureScreen();
+        
+        if (result.success && result.capture) {
+          capture = {
+            id: result.capture.id,
+            timestamp: new Date(result.capture.timestamp),
+            imageData: result.capture.imageData,
+            width: result.capture.width,
+            height: result.capture.height,
+            source: result.capture.source,
+          };
+        } else {
+          // Fallback to simulated capture
+          capture = await this.createSimulatedCapture();
+        }
+      } else {
+        // Fallback for web mode
+        capture = await this.createSimulatedCapture();
+      }
 
       session.captures.push(capture);
       this.captureHistory.push(capture);
@@ -225,10 +239,139 @@ class AIVisionMonitor {
     }
   }
 
-  private async getScreenshot(): Promise<string> {
-    // In real implementation, this would use Electron's desktopCapturer
-    // For now, return a placeholder
-    return 'data:image/png;base64,PLACEHOLDER';
+  // Capture specific profile's browser window
+  async captureProfileWindow(profileId: string): Promise<ScreenCapture | null> {
+    const session = this.sessions.get(profileId);
+    if (!session || !session.isActive) return null;
+
+    if (!isElectron() || !electronAPI) {
+      console.warn('Profile window capture only works in Electron');
+      return this.captureScreen(profileId);
+    }
+
+    try {
+      const result = await electronAPI.captureProfileWindow(profileId);
+      
+      if (result.success && result.capture) {
+        const capture: ScreenCapture = {
+          id: result.capture.id,
+          timestamp: new Date(result.capture.timestamp),
+          imageData: result.capture.imageData,
+          width: result.capture.width,
+          height: result.capture.height,
+          source: 'browser',
+        };
+
+        session.captures.push(capture);
+        this.captureHistory.push(capture);
+        this.stats.totalCaptures++;
+
+        this.emit({ type: 'capture', capture, profileId });
+
+        if (this.config.analyzeOnCapture) {
+          await this.analyzeCapture(profileId, capture);
+        }
+
+        this.saveToStorage();
+        return capture;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Profile window capture failed:', error);
+      return null;
+    }
+  }
+
+  // Start continuous capture using Electron
+  async startContinuousCapture(profileId: string): Promise<boolean> {
+    if (!isElectron() || !electronAPI) {
+      console.warn('Continuous capture only works in Electron');
+      return false;
+    }
+
+    try {
+      // Set up listener for captured frames
+      electronAPI.onScreenCaptured((captureData: ScreenCaptureData) => {
+        const capture: ScreenCapture = {
+          id: captureData.id,
+          timestamp: new Date(captureData.timestamp),
+          imageData: captureData.imageData,
+          width: captureData.width,
+          height: captureData.height,
+          source: captureData.source,
+        };
+
+        const session = this.sessions.get(profileId);
+        if (session && session.isActive) {
+          session.captures.push(capture);
+          this.captureHistory.push(capture);
+          this.stats.totalCaptures++;
+
+          this.emit({ type: 'capture', capture, profileId });
+
+          if (this.config.analyzeOnCapture) {
+            this.analyzeCapture(profileId, capture);
+          }
+        }
+      });
+
+      await electronAPI.startContinuousCapture({
+        interval: this.config.captureInterval,
+        type: 'screen'
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to start continuous capture:', error);
+      return false;
+    }
+  }
+
+  // Stop continuous capture
+  async stopContinuousCapture(): Promise<boolean> {
+    if (!isElectron() || !electronAPI) {
+      return false;
+    }
+
+    try {
+      await electronAPI.stopContinuousCapture();
+      return true;
+    } catch (error) {
+      console.error('Failed to stop continuous capture:', error);
+      return false;
+    }
+  }
+
+  // Get available capture sources
+  async getCaptureSources(): Promise<{ id: string; name: string; type: string; thumbnail: string }[]> {
+    if (!isElectron() || !electronAPI) {
+      return [];
+    }
+
+    try {
+      const result = await electronAPI.getCaptureSources();
+      return result.success ? result.sources : [];
+    } catch (error) {
+      console.error('Failed to get capture sources:', error);
+      return [];
+    }
+  }
+
+  private async createSimulatedCapture(): Promise<ScreenCapture> {
+    return {
+      id: `capture_${Date.now()}`,
+      timestamp: new Date(),
+      imageData: 'data:image/png;base64,PLACEHOLDER',
+      width: window.innerWidth,
+      height: window.innerHeight,
+      source: 'browser',
+    };
+  }
+
+  // Check if real capture is available
+  isRealCaptureAvailable(): boolean {
+    return isElectron() && !!electronAPI;
   }
 
   // Analyze captured screen with AI

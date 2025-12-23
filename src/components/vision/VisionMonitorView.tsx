@@ -45,6 +45,7 @@ import {
   AIAnalysisResult
 } from '@/lib/visionMonitor';
 import { captchaSolver } from '@/lib/captchaSolver';
+import { isElectron } from '@/lib/electron';
 
 interface ActivityLog {
   id: string;
@@ -210,9 +211,17 @@ export function VisionMonitorView() {
               )}
             </div>
             عيون الذكاء الاصطناعي
+            {visionMonitor.isRealCaptureAvailable() && (
+              <Badge className="bg-green-500/20 text-green-500 text-xs">
+                التقاط حقيقي
+              </Badge>
+            )}
           </h1>
           <p className="text-muted-foreground mt-1">
             نظام مراقبة وتحليل الشاشة بالذكاء الاصطناعي
+            {!visionMonitor.isRealCaptureAvailable() && (
+              <span className="text-yellow-500 text-xs mr-2">(وضع المحاكاة - للتقاط الحقيقي استخدم تطبيق Electron)</span>
+            )}
           </p>
         </div>
 

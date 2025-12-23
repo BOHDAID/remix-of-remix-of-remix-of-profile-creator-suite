@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, session, desktopCapturer } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -935,4 +935,201 @@ ipcMain.handle('inject-session', async (event, { profileId, sessionData }) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+});
+
+// ========== Screen Capture API for AI Vision ==========
+
+// Capture full screen
+ipcMain.handle('capture-screen', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1920, height: 1080 }
+    });
+    
+    if (sources.length === 0) {
+      return { success: false, error: 'No screen sources found' };
+    }
+    
+    const primaryScreen = sources[0];
+    const thumbnail = primaryScreen.thumbnail.toDataURL();
+    
+    return {
+      success: true,
+      capture: {
+        id: `screen_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        imageData: thumbnail,
+        width: primaryScreen.thumbnail.getSize().width,
+        height: primaryScreen.thumbnail.getSize().height,
+        source: 'screen',
+        sourceId: primaryScreen.id,
+        sourceName: primaryScreen.name
+      }
+    };
+  } catch (error) {
+    console.error('Screen capture error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Capture specific window
+ipcMain.handle('capture-window', async (event, windowName) => {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 1920, height: 1080 }
+    });
+    
+    // Find window by name or get all windows
+    let targetSource;
+    if (windowName) {
+      targetSource = sources.find(s => s.name.toLowerCase().includes(windowName.toLowerCase()));
+    }
+    
+    if (!targetSource && sources.length > 0) {
+      targetSource = sources[0];
+    }
+    
+    if (!targetSource) {
+      return { success: false, error: 'No window found' };
+    }
+    
+    const thumbnail = targetSource.thumbnail.toDataURL();
+    
+    return {
+      success: true,
+      capture: {
+        id: `window_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        imageData: thumbnail,
+        width: targetSource.thumbnail.getSize().width,
+        height: targetSource.thumbnail.getSize().height,
+        source: 'window',
+        sourceId: targetSource.id,
+        sourceName: targetSource.name
+      }
+    };
+  } catch (error) {
+    console.error('Window capture error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all available capture sources
+ipcMain.handle('get-capture-sources', async () => {
+  try {
+    const [screens, windows] = await Promise.all([
+      desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 320, height: 180 } }),
+      desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 320, height: 180 } })
+    ]);
+    
+    const sources = [
+      ...screens.map(s => ({
+        id: s.id,
+        name: s.name,
+        type: 'screen',
+        thumbnail: s.thumbnail.toDataURL()
+      })),
+      ...windows.map(s => ({
+        id: s.id,
+        name: s.name,
+        type: 'window',
+        thumbnail: s.thumbnail.toDataURL()
+      }))
+    ];
+    
+    return { success: true, sources };
+  } catch (error) {
+    return { success: false, error: error.message, sources: [] };
+  }
+});
+
+// Capture specific profile browser window
+ipcMain.handle('capture-profile-window', async (event, profileId) => {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 1920, height: 1080 }
+    });
+    
+    // Find the chromium window for this profile
+    const profileWindow = sources.find(s => 
+      s.name.toLowerCase().includes('chromium') || 
+      s.name.toLowerCase().includes('chrome') ||
+      s.name.toLowerCase().includes('browser')
+    );
+    
+    if (!profileWindow) {
+      return { success: false, error: 'Profile window not found' };
+    }
+    
+    const thumbnail = profileWindow.thumbnail.toDataURL();
+    
+    return {
+      success: true,
+      capture: {
+        id: `profile_${profileId}_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        imageData: thumbnail,
+        width: profileWindow.thumbnail.getSize().width,
+        height: profileWindow.thumbnail.getSize().height,
+        source: 'browser',
+        sourceId: profileWindow.id,
+        sourceName: profileWindow.name,
+        profileId
+      }
+    };
+  } catch (error) {
+    console.error('Profile window capture error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Start continuous screen capture for AI Vision
+let captureInterval = null;
+ipcMain.handle('start-continuous-capture', async (event, options) => {
+  const { interval = 2000, type = 'screen' } = options || {};
+  
+  if (captureInterval) {
+    clearInterval(captureInterval);
+  }
+  
+  captureInterval = setInterval(async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: [type === 'screen' ? 'screen' : 'window'],
+        thumbnailSize: { width: 1920, height: 1080 }
+      });
+      
+      if (sources.length > 0) {
+        const source = sources[0];
+        const capture = {
+          id: `auto_${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          imageData: source.thumbnail.toDataURL(),
+          width: source.thumbnail.getSize().width,
+          height: source.thumbnail.getSize().height,
+          source: type,
+          sourceId: source.id,
+          sourceName: source.name
+        };
+        
+        mainWindow?.webContents.send('screen-captured', capture);
+      }
+    } catch (error) {
+      console.error('Continuous capture error:', error);
+    }
+  }, interval);
+  
+  return { success: true, message: 'Continuous capture started' };
+});
+
+// Stop continuous screen capture
+ipcMain.handle('stop-continuous-capture', async () => {
+  if (captureInterval) {
+    clearInterval(captureInterval);
+    captureInterval = null;
+  }
+  return { success: true, message: 'Continuous capture stopped' };
 });
