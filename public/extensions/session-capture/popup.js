@@ -127,6 +127,31 @@ document.getElementById('captureBtn').addEventListener('click', async () => {
   }
 });
 
+// Sync with main app
+document.getElementById('syncBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('syncBtn');
+  const btnText = document.getElementById('syncBtnText');
+  
+  btn.disabled = true;
+  btnText.innerHTML = '<span class="spinner"></span> جاري المزامنة...';
+  
+  chrome.runtime.sendMessage({ action: 'forceSync' }, (response) => {
+    if (response?.success) {
+      btn.classList.add('success');
+      btnText.textContent = '✅ تمت المزامنة!';
+      showToast('تمت المزامنة مع التطبيق الرئيسي', 'success');
+    } else {
+      showToast('فشلت المزامنة', 'error');
+    }
+    
+    setTimeout(() => {
+      btn.classList.remove('success');
+      btn.disabled = false;
+      btnText.textContent = 'مزامنة مع التطبيق';
+    }, 2000);
+  });
+});
+
 // Copy session to clipboard
 window.copySession = async function(sessionId) {
   chrome.runtime.sendMessage({ action: 'exportSession', sessionId }, (response) => {

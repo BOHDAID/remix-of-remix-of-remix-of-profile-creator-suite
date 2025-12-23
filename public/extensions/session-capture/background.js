@@ -1,12 +1,65 @@
 // Session Capture Background Service Worker
+// With sync to main app functionality
 
 // Store captured sessions
 let capturedSessions = [];
+
+// Sync interval (every 10 seconds)
+let syncInterval = null;
+
+// Start sync when extension loads
+chrome.runtime.onInstalled.addListener(() => {
+  startAutoSync();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  startAutoSync();
+});
+
+function startAutoSync() {
+  // Clear existing interval
+  if (syncInterval) {
+    clearInterval(syncInterval);
+  }
+  
+  // Sync every 10 seconds
+  syncInterval = setInterval(() => {
+    syncSessionsToApp();
+  }, 10000);
+  
+  // Initial sync
+  syncSessionsToApp();
+}
+
+// Sync sessions to main app via localStorage (shared between extension and app)
+async function syncSessionsToApp() {
+  try {
+    const { sessions = [] } = await chrome.storage.local.get(['sessions']);
+    
+    // Store in a format the main app can read
+    const syncData = {
+      lastSync: new Date().toISOString(),
+      sessions: sessions,
+      source: 'bhd-session-capture-extension'
+    };
+    
+    // Save to chrome.storage.local with a special key for the app
+    await chrome.storage.local.set({ 
+      'bhd-synced-sessions': syncData 
+    });
+    
+    console.log('[Session Capture] Synced', sessions.length, 'sessions');
+  } catch (error) {
+    console.error('[Session Capture] Sync error:', error);
+  }
+}
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'captureSession') {
     captureCurrentSession(request.tabId).then(session => {
+      // Sync immediately after capture
+      syncSessionsToApp();
       sendResponse({ success: true, session });
     }).catch(error => {
       sendResponse({ success: false, error: error.message });
@@ -24,6 +77,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'clearSessions') {
     chrome.storage.local.set({ sessions: [] }, () => {
       capturedSessions = [];
+      syncSessionsToApp();
       sendResponse({ success: true });
     });
     return true;
@@ -34,6 +88,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const sessions = result.sessions || [];
       const session = sessions.find(s => s.id === request.sessionId);
       sendResponse({ session });
+    });
+    return true;
+  }
+  
+  if (request.action === 'forceSync') {
+    syncSessionsToApp().then(() => {
+      sendResponse({ success: true });
     });
     return true;
   }

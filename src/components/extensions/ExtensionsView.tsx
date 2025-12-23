@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Extension } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -21,17 +24,70 @@ import {
   Power,
   Upload,
   FileArchive,
-  Folder
+  Folder,
+  Cookie,
+  Bot,
+  Fingerprint,
+  Eye,
+  Shield,
+  CheckCircle2,
+  Package
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { isElectron, getElectronAPI } from '@/lib/electron';
+
+// Built-in extensions that come with the app
+interface BuiltInExtension {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+  features: string[];
+  status: 'active' | 'available';
+  folder: string;
+}
+
+const BUILT_IN_EXTENSIONS: BuiltInExtension[] = [
+  {
+    id: 'session-capture',
+    name: 'التقاط الجلسات',
+    description: 'التقاط الكوكيز والتوكنات وبيانات الجلسة من أي موقع بضغطة واحدة',
+    icon: <Cookie className="w-6 h-6" />,
+    color: 'from-orange-500 to-red-500',
+    features: ['التقاط الكوكيز', 'التقاط localStorage', 'كشف التوكنات', 'تصدير الجلسات'],
+    status: 'active',
+    folder: 'session-capture'
+  },
+  {
+    id: 'captcha-solver',
+    name: 'حل CAPTCHA',
+    description: 'حل أنواع CAPTCHA المختلفة تلقائياً باستخدام الذكاء الاصطناعي',
+    icon: <Bot className="w-6 h-6" />,
+    color: 'from-blue-500 to-cyan-500',
+    features: ['حل reCAPTCHA', 'حل hCaptcha', 'حل الصور', 'حل النص'],
+    status: 'active',
+    folder: 'captcha-solver'
+  },
+  {
+    id: 'fingerprint-spoof',
+    name: 'تزييف البصمة',
+    description: 'تزييف بصمة المتصفح بالكامل لتجنب التتبع والكشف',
+    icon: <Fingerprint className="w-6 h-6" />,
+    color: 'from-purple-500 to-pink-500',
+    features: ['تزييف Canvas', 'تزييف WebGL', 'تزييف Audio', 'إخفاء WebRTC'],
+    status: 'active',
+    folder: 'fingerprint-extension'
+  }
+];
 
 export function ExtensionsView() {
   const { extensions, addExtension, updateExtension, deleteExtension } = useAppStore();
   const [showModal, setShowModal] = useState(false);
   const [editExtension, setEditExtension] = useState<Extension | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('builtin');
 
   // Form state
   const [name, setName] = useState('');
@@ -43,6 +99,11 @@ export function ExtensionsView() {
   const filteredExtensions = extensions.filter(e =>
     e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     e.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredBuiltIn = BUILT_IN_EXTENSIONS.filter(e =>
+    e.name.includes(searchQuery) ||
+    e.description.includes(searchQuery)
   );
 
   const handleOpen = (ext?: Extension) => {
@@ -161,11 +222,13 @@ export function ExtensionsView() {
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-3">
-            <Puzzle className="w-7 h-7 text-primary" />
+            <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5">
+              <Puzzle className="w-7 h-7 text-primary" />
+            </div>
             الملحقات
           </h1>
           <p className="text-muted-foreground mt-1">
-            إدارة ملحقات Chromium
+            إدارة ملحقات Chromium المدمجة والمخصصة
           </p>
         </div>
         <div className="flex gap-2">
@@ -193,7 +256,7 @@ export function ExtensionsView() {
         <div className="bg-warning/10 border border-warning/20 rounded-lg p-4">
           <p className="text-warning font-medium">وضع المعاينة</p>
           <p className="text-sm text-muted-foreground">
-            لإضافة ملحقات حقيقية، قم بتشغيل التطبيق كبرنامج سطح مكتب
+            لاستخدام الملحقات، قم بتشغيل التطبيق كبرنامج سطح مكتب
           </p>
         </div>
       )}
@@ -209,115 +272,205 @@ export function ExtensionsView() {
         />
       </div>
 
-      {/* Extensions Grid */}
-      {filteredExtensions.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="w-20 h-20 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
-            <Puzzle className="w-10 h-10 text-muted-foreground" />
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="builtin" className="gap-2">
+            <Package className="w-4 h-4" />
+            ملحقات مدمجة ({BUILT_IN_EXTENSIONS.length})
+          </TabsTrigger>
+          <TabsTrigger value="custom" className="gap-2">
+            <Puzzle className="w-4 h-4" />
+            ملحقات مخصصة ({extensions.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Built-in Extensions */}
+        <TabsContent value="builtin" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredBuiltIn.map((ext, index) => (
+              <Card 
+                key={ext.id}
+                className="glass-card overflow-hidden animate-slide-in"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <div className={cn(
+                  "h-2 bg-gradient-to-r",
+                  ext.color
+                )} />
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className={cn(
+                      "w-14 h-14 rounded-xl flex items-center justify-center text-white bg-gradient-to-br",
+                      ext.color
+                    )}>
+                      {ext.icon}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-lg">{ext.name}</h3>
+                        <Badge className="bg-success/20 text-success border-0 text-xs">
+                          <CheckCircle2 className="w-3 h-3 ml-1" />
+                          مدمج
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {ext.description}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">المميزات:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {ext.features.map((feature, i) => (
+                        <Badge 
+                          key={i} 
+                          variant="outline" 
+                          className="text-xs bg-background/50"
+                        >
+                          {feature}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Shield className="w-3 h-3" />
+                        يتم تحميله تلقائياً مع البروفايلات
+                      </span>
+                      <Badge className="bg-primary/20 text-primary border-0 text-xs">
+                        نشط
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-          <h3 className="text-lg font-semibold mb-2">
-            {searchQuery ? 'لا توجد نتائج' : 'لا توجد ملحقات'}
-          </h3>
-          <p className="text-muted-foreground mb-6">
-            {searchQuery 
-              ? 'جرب البحث بكلمات مختلفة'
-              : 'أضف ملحقات Chromium لاستخدامها في البروفايلات'
-            }
-          </p>
-          {!searchQuery && (
-            <div className="flex justify-center gap-2">
-              {isElectron() && (
-                <>
-                  <Button variant="outline" onClick={handleSelectZip}>
-                    <FileArchive className="w-4 h-4 ml-2" />
-                    رفع ZIP
-                  </Button>
-                  <Button variant="outline" onClick={handleSelectFolder}>
-                    <Folder className="w-4 h-4 ml-2" />
-                    اختيار مجلد
-                  </Button>
-                </>
-              )}
-              <Button variant="glow" onClick={() => handleOpen()}>
-                <Plus className="w-4 h-4 ml-2" />
-                إضافة يدوي
-              </Button>
+          
+          {filteredBuiltIn.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>لا توجد ملحقات مدمجة تطابق البحث</p>
             </div>
           )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredExtensions.map((ext, index) => (
-            <div 
-              key={ext.id}
-              className={cn(
-                "glass-card rounded-xl p-5 transition-all duration-300 hover:border-primary/30 group animate-slide-in",
-                !ext.enabled && "opacity-60"
-              )}
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center text-2xl">
-                    {ext.icon}
-                  </div>
-                  <div>
-                    <h3 className="font-bold">{ext.name}</h3>
-                    <span className={cn(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      ext.enabled
-                        ? "bg-success/20 text-success"
-                        : "bg-muted text-muted-foreground"
-                    )}>
-                      {ext.enabled ? 'مفعّل' : 'معطّل'}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => toggleEnabled(ext)}
-                    className="h-8 w-8"
-                  >
-                    <Power className={cn("w-4 h-4", ext.enabled && "text-success")} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleOpen(ext)}
-                    className="h-8 w-8"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(ext.id)}
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
+        </TabsContent>
+
+        {/* Custom Extensions */}
+        <TabsContent value="custom" className="mt-6">
+          {filteredExtensions.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="w-20 h-20 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                <Puzzle className="w-10 h-10 text-muted-foreground" />
               </div>
-
-              {ext.description && (
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {ext.description}
-                </p>
+              <h3 className="text-lg font-semibold mb-2">
+                {searchQuery ? 'لا توجد نتائج' : 'لا توجد ملحقات مخصصة'}
+              </h3>
+              <p className="text-muted-foreground mb-6">
+                {searchQuery 
+                  ? 'جرب البحث بكلمات مختلفة'
+                  : 'أضف ملحقات Chromium خاصة بك'
+                }
+              </p>
+              {!searchQuery && (
+                <div className="flex justify-center gap-2">
+                  {isElectron() && (
+                    <>
+                      <Button variant="outline" onClick={handleSelectZip}>
+                        <FileArchive className="w-4 h-4 ml-2" />
+                        رفع ZIP
+                      </Button>
+                      <Button variant="outline" onClick={handleSelectFolder}>
+                        <Folder className="w-4 h-4 ml-2" />
+                        اختيار مجلد
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="glow" onClick={() => handleOpen()}>
+                    <Plus className="w-4 h-4 ml-2" />
+                    إضافة يدوي
+                  </Button>
+                </div>
               )}
-
-              <button
-                onClick={() => handleOpenFolder(ext.path)}
-                className="w-full flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 hover:bg-muted transition-colors"
-              >
-                <FolderOpen className="w-3 h-3" />
-                <span className="truncate" dir="ltr">{ext.path}</span>
-              </button>
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredExtensions.map((ext, index) => (
+                <div 
+                  key={ext.id}
+                  className={cn(
+                    "glass-card rounded-xl p-5 transition-all duration-300 hover:border-primary/30 group animate-slide-in",
+                    !ext.enabled && "opacity-60"
+                  )}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center text-2xl">
+                        {ext.icon}
+                      </div>
+                      <div>
+                        <h3 className="font-bold">{ext.name}</h3>
+                        <span className={cn(
+                          "text-xs px-2 py-0.5 rounded-full",
+                          ext.enabled
+                            ? "bg-success/20 text-success"
+                            : "bg-muted text-muted-foreground"
+                        )}>
+                          {ext.enabled ? 'مفعّل' : 'معطّل'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => toggleEnabled(ext)}
+                        className="h-8 w-8"
+                      >
+                        <Power className={cn("w-4 h-4", ext.enabled && "text-success")} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpen(ext)}
+                        className="h-8 w-8"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(ext.id)}
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {ext.description && (
+                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                      {ext.description}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={() => handleOpenFolder(ext.path)}
+                    className="w-full flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 hover:bg-muted transition-colors"
+                  >
+                    <FolderOpen className="w-3 h-3" />
+                    <span className="truncate" dir="ltr">{ext.path}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Add/Edit Modal */}
       <Dialog open={showModal} onOpenChange={handleClose}>
