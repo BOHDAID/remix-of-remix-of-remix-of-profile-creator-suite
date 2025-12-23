@@ -1,8 +1,10 @@
 // AI CAPTCHA Solver - Content Script
-// Runs on every page to detect and solve CAPTCHAs
+// Runs on every page to detect and solve CAPTCHAs using AI
 
 (function() {
   'use strict';
+  
+  const SUPABASE_URL = 'https://eibrsilezflxgzatuvyz.supabase.co';
   
   const SOLVER_CONFIG = {
     checkInterval: 2000,
@@ -118,7 +120,7 @@
     isProcessing = true;
     
     console.log('[AI Solver] Starting to solve:', data.type);
-    showStatus('جاري الحل...', 'processing');
+    showStatus('AI يحلل CAPTCHA...', 'processing');
     
     let success = false;
     let attempts = 0;
@@ -129,7 +131,7 @@
       try {
         switch (data.type) {
           case 'text':
-            success = await solveTextCaptcha();
+            success = await solveTextCaptchaWithAI();
             break;
           case 'recaptcha-v2':
             success = await solveRecaptchaV2();
@@ -138,7 +140,7 @@
             success = await solveHCaptcha();
             break;
           case 'image':
-            success = await solveImageCaptcha();
+            success = await solveImageCaptchaWithAI();
             break;
           default:
             console.log('[AI Solver] Unknown CAPTCHA type');
@@ -174,128 +176,146 @@
     isProcessing = false;
   }
   
-  // Solve text CAPTCHA using pattern recognition
-  async function solveTextCaptcha() {
-    const captchaImg = document.querySelector('img[src*="captcha"], .captcha-image img, #captcha-image');
-    const captchaInput = document.querySelector('input[name*="captcha"], #captcha-input, .captcha-input');
+  // Convert image to base64
+  async function imageToBase64(imgElement) {
+    return new Promise((resolve, reject) => {
+      try {
+        // Try canvas method first
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          try {
+            const base64 = canvas.toDataURL('image/png');
+            resolve(base64);
+          } catch (e) {
+            // Canvas tainted, try fetch
+            fetchImageAsBase64(imgElement.src).then(resolve).catch(reject);
+          }
+        };
+        
+        img.onerror = () => {
+          fetchImageAsBase64(imgElement.src).then(resolve).catch(reject);
+        };
+        
+        img.src = imgElement.src;
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+  
+  // Fetch image as base64 (fallback)
+  async function fetchImageAsBase64(url) {
+    const response = await fetch(url);
+    const blob = await response.blob();
     
-    if (!captchaImg || !captchaInput) return false;
-    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  
+  // Call AI solver API
+  async function callAISolver(imageBase64, captchaType) {
     try {
-      // Get image data
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      console.log('[AI Solver] Calling AI API for', captchaType);
       
-      // Handle cross-origin
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = captchaImg.src;
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/solve-captcha`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageBase64,
+          captchaType
+        })
       });
       
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      
-      // Simple OCR using pattern matching
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const text = await performLocalOCR(imageData);
-      
-      if (text && text.length > 0) {
-        // Type the solution
-        captchaInput.value = '';
-        captchaInput.focus();
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        console.error('[AI Solver] API error:', response.status, error);
         
-        for (const char of text) {
-          captchaInput.value += char;
-          captchaInput.dispatchEvent(new Event('input', { bubbles: true }));
-          await delay(50 + Math.random() * 100);
+        if (response.status === 429) {
+          showStatus('Rate limit - انتظر قليلاً', 'error');
+        } else if (response.status === 402) {
+          showStatus('رصيد AI منتهي', 'error');
         }
         
-        return true;
+        return null;
       }
+      
+      const data = await response.json();
+      console.log('[AI Solver] AI response:', data);
+      
+      if (data.success && data.solution) {
+        return data.solution;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[AI Solver] API call failed:', error);
+      return null;
+    }
+  }
+  
+  // Solve text CAPTCHA using AI
+  async function solveTextCaptchaWithAI() {
+    const captchaImg = document.querySelector('img[src*="captcha"], .captcha-image img, #captcha-image, img[alt*="captcha"]');
+    const captchaInput = document.querySelector('input[name*="captcha"], #captcha-input, .captcha-input, input[placeholder*="captcha" i]');
+    
+    if (!captchaImg) {
+      console.log('[AI Solver] No CAPTCHA image found');
+      return false;
+    }
+    
+    if (!captchaInput) {
+      console.log('[AI Solver] No CAPTCHA input found');
+      return false;
+    }
+    
+    try {
+      showStatus('جاري تحليل الصورة...', 'processing');
+      
+      // Get image as base64
+      const imageBase64 = await imageToBase64(captchaImg);
+      
+      // Call AI solver
+      const solution = await callAISolver(imageBase64, 'text');
+      
+      if (!solution) {
+        console.log('[AI Solver] No solution from AI');
+        return false;
+      }
+      
+      console.log('[AI Solver] Got solution:', solution);
+      
+      // Type the solution with human-like behavior
+      captchaInput.value = '';
+      captchaInput.focus();
+      
+      for (const char of solution) {
+        captchaInput.value += char;
+        captchaInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await delay(50 + Math.random() * 100);
+      }
+      
+      captchaInput.dispatchEvent(new Event('change', { bubbles: true }));
+      
+      return true;
     } catch (error) {
       console.error('[AI Solver] Text CAPTCHA error:', error);
+      return false;
     }
-    
-    return false;
-  }
-  
-  // Simple local OCR (pattern-based)
-  async function performLocalOCR(imageData) {
-    // Preprocess image
-    const processed = preprocessImage(imageData);
-    
-    // Character patterns for common CAPTCHA fonts
-    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-    
-    // Simple edge detection and character segmentation
-    const segments = segmentCharacters(processed);
-    
-    let result = '';
-    for (const segment of segments) {
-      const char = recognizeCharacter(segment, chars);
-      if (char) result += char;
-    }
-    
-    return result;
-  }
-  
-  function preprocessImage(imageData) {
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    
-    // Convert to grayscale and apply threshold
-    const result = new Uint8Array(width * height);
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-      result[i / 4] = gray < 128 ? 0 : 255;
-    }
-    
-    return { data: result, width, height };
-  }
-  
-  function segmentCharacters(image) {
-    // Simple vertical projection segmentation
-    const segments = [];
-    const { data, width, height } = image;
-    
-    let inChar = false;
-    let startX = 0;
-    
-    for (let x = 0; x < width; x++) {
-      let hasPixel = false;
-      for (let y = 0; y < height; y++) {
-        if (data[y * width + x] === 0) {
-          hasPixel = true;
-          break;
-        }
-      }
-      
-      if (hasPixel && !inChar) {
-        inChar = true;
-        startX = x;
-      } else if (!hasPixel && inChar) {
-        inChar = false;
-        if (x - startX > 3) {
-          segments.push({ x: startX, width: x - startX });
-        }
-      }
-    }
-    
-    return segments.slice(0, 8); // Max 8 characters
-  }
-  
-  function recognizeCharacter(segment, chars) {
-    // Simplified character recognition
-    // In real implementation, this would use ML models
-    const charIndex = Math.floor(Math.random() * chars.length);
-    return chars[charIndex];
   }
   
   // Solve reCAPTCHA v2 by simulating human behavior
@@ -351,12 +371,58 @@
     return false;
   }
   
-  // Solve image CAPTCHA
-  async function solveImageCaptcha() {
-    // This would require a proper image classification model
-    // For now, return false as it needs ML integration
-    console.log('[AI Solver] Image CAPTCHA requires ML model');
-    return false;
+  // Solve image CAPTCHA using AI
+  async function solveImageCaptchaWithAI() {
+    const captchaContainer = document.querySelector('.rc-imageselect, .image-captcha-container, [class*="captcha"] img');
+    
+    if (!captchaContainer) {
+      console.log('[AI Solver] No image CAPTCHA found');
+      return false;
+    }
+    
+    try {
+      showStatus('جاري تحليل الصور...', 'processing');
+      
+      // Capture the container as image
+      const canvas = document.createElement('canvas');
+      const rect = captchaContainer.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      
+      // For now, we'll try to get any images in the container
+      const images = captchaContainer.querySelectorAll('img');
+      if (images.length > 0) {
+        const imageBase64 = await imageToBase64(images[0]);
+        const solution = await callAISolver(imageBase64, 'image');
+        
+        if (solution) {
+          // Parse positions and click
+          const positions = solution.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
+          const tiles = captchaContainer.querySelectorAll('.rc-imageselect-tile, .image-tile, img');
+          
+          for (const pos of positions) {
+            if (tiles[pos - 1]) {
+              await simulateHumanClick(tiles[pos - 1]);
+              await delay(300 + Math.random() * 200);
+            }
+          }
+          
+          // Click verify button
+          const verifyBtn = document.querySelector('.verify-button-holder button, #recaptcha-verify-button, button[type="submit"]');
+          if (verifyBtn) {
+            await delay(500);
+            await simulateHumanClick(verifyBtn);
+          }
+          
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('[AI Solver] Image CAPTCHA error:', error);
+      return false;
+    }
   }
   
   // Simulate human-like click
@@ -451,6 +517,6 @@
   }
   
   // Initialize
-  console.log('[AI CAPTCHA Solver] Loaded on:', window.location.href);
+  console.log('[AI CAPTCHA Solver] Loaded with AI backend on:', window.location.href);
   startDetection();
 })();
