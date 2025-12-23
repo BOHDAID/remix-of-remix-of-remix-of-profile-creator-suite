@@ -48,6 +48,43 @@ export interface GetSessionsResult {
   error?: string;
 }
 
+// Screen Capture Types for AI Vision
+export interface ScreenCaptureData {
+  id: string;
+  timestamp: string;
+  imageData: string;
+  width: number;
+  height: number;
+  source: 'screen' | 'window' | 'browser';
+  sourceId: string;
+  sourceName: string;
+  profileId?: string;
+}
+
+export interface ScreenCaptureResult {
+  success: boolean;
+  capture?: ScreenCaptureData;
+  error?: string;
+}
+
+export interface CaptureSource {
+  id: string;
+  name: string;
+  type: 'screen' | 'window';
+  thumbnail: string;
+}
+
+export interface CaptureSourcesResult {
+  success: boolean;
+  sources: CaptureSource[];
+  error?: string;
+}
+
+export interface ContinuousCaptureOptions {
+  interval?: number;
+  type?: 'screen' | 'window';
+}
+
 export interface ElectronAPI {
   // Window controls
   minimizeWindow: () => void;
@@ -91,6 +128,15 @@ export interface ElectronAPI {
   captureUrlCookies: (profileId: string, url: string) => Promise<{ success: boolean; cookies: SessionCookie[]; error?: string }>;
   injectSession: (profileId: string, sessionData: CapturedSession) => Promise<{ success: boolean; error?: string }>;
   onSessionCaptured: (callback: (session: CapturedSession) => void) => void;
+  
+  // Screen Capture API for AI Vision
+  captureScreen: () => Promise<ScreenCaptureResult>;
+  captureWindow: (windowName?: string) => Promise<ScreenCaptureResult>;
+  getCaptureSources: () => Promise<CaptureSourcesResult>;
+  captureProfileWindow: (profileId: string) => Promise<ScreenCaptureResult>;
+  startContinuousCapture: (options?: ContinuousCaptureOptions) => Promise<{ success: boolean; message: string }>;
+  stopContinuousCapture: () => Promise<{ success: boolean; message: string }>;
+  onScreenCaptured: (callback: (capture: ScreenCaptureData) => void) => void;
   
   // Platform info
   platform: string;

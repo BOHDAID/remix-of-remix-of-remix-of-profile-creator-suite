@@ -44,6 +44,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   injectSession: (profileId, sessionData) => ipcRenderer.invoke('inject-session', { profileId, sessionData }),
   onSessionCaptured: (callback) => ipcRenderer.on('session-captured', (_, session) => callback(session)),
   
+  // ========== Screen Capture API for AI Vision ==========
+  captureScreen: () => ipcRenderer.invoke('capture-screen'),
+  captureWindow: (windowName) => ipcRenderer.invoke('capture-window', windowName),
+  getCaptureSources: () => ipcRenderer.invoke('get-capture-sources'),
+  captureProfileWindow: (profileId) => ipcRenderer.invoke('capture-profile-window', profileId),
+  startContinuousCapture: (options) => ipcRenderer.invoke('start-continuous-capture', options),
+  stopContinuousCapture: () => ipcRenderer.invoke('stop-continuous-capture'),
+  onScreenCaptured: (callback) => ipcRenderer.on('screen-captured', (_, capture) => callback(capture)),
+  
   // Platform info
   platform: process.platform,
   isElectron: true
