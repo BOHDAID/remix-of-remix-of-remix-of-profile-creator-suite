@@ -135,11 +135,26 @@ document.getElementById('syncBtn').addEventListener('click', async () => {
   btn.disabled = true;
   btnText.innerHTML = '<span class="spinner"></span> جاري المزامنة...';
   
-  chrome.runtime.sendMessage({ action: 'forceSync' }, (response) => {
+  // First force sync to chrome.storage
+  chrome.runtime.sendMessage({ action: 'forceSync' }, async (response) => {
     if (response?.success) {
-      btn.classList.add('success');
-      btnText.textContent = '✅ تمت المزامنة!';
-      showToast('تمت المزامنة مع التطبيق الرئيسي', 'success');
+      // Then try to sync directly to the current tab if it's the BHD app
+      if (currentTab) {
+        chrome.runtime.sendMessage({ action: 'syncToPage', tabId: currentTab.id }, (syncResponse) => {
+          btn.classList.add('success');
+          if (syncResponse?.success) {
+            btnText.textContent = '✅ تمت المزامنة مع التطبيق!';
+            showToast('تمت المزامنة مباشرة مع التطبيق', 'success');
+          } else {
+            btnText.textContent = '✅ تمت المزامنة!';
+            showToast('تمت المزامنة - افتح التطبيق لتحميل الجلسات', 'success');
+          }
+        });
+      } else {
+        btn.classList.add('success');
+        btnText.textContent = '✅ تمت المزامنة!';
+        showToast('تمت المزامنة مع التطبيق الرئيسي', 'success');
+      }
     } else {
       showToast('فشلت المزامنة', 'error');
     }

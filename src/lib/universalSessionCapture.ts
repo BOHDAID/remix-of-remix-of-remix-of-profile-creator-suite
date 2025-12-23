@@ -284,10 +284,13 @@ class UniversalSessionCaptureService {
   private listeners: Set<(session: UniversalSession) => void> = new Set();
   private storageKey = 'bhd_universal_sessions';
   private credentialsKey = 'bhd_universal_credentials';
+  private extensionSyncKey = 'bhd_extension_synced_sessions';
+  private lastSyncTime = 0;
 
   constructor() {
     this.loadFromStorage();
     this.startAutoRefresh();
+    this.startExtensionSync();
   }
 
   private loadFromStorage(): void {
@@ -312,6 +315,9 @@ class UniversalSessionCaptureService {
           this.credentials.set(c.id, c);
         });
       }
+      
+      // Try to load from extension sync
+      this.importFromExtension();
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
@@ -331,6 +337,110 @@ class UniversalSessionCaptureService {
     setInterval(() => {
       this.refreshAllSessionStatus();
     }, 60000);
+  }
+  
+  // Start sync with browser extension
+  private startExtensionSync(): void {
+    // Check for extension sessions every 5 seconds
+    setInterval(() => {
+      this.importFromExtension();
+    }, 5000);
+  }
+  
+  // Import sessions from browser extension
+  importFromExtension(): number {
+    try {
+      // Check for extension synced data in localStorage (extension writes here)
+      const syncedData = localStorage.getItem('bhd-synced-sessions');
+      if (!syncedData) return 0;
+      
+      const parsed = JSON.parse(syncedData);
+      if (!parsed.sessions || !Array.isArray(parsed.sessions)) return 0;
+      
+      // Check if this is new data
+      const syncTime = new Date(parsed.lastSync).getTime();
+      if (syncTime <= this.lastSyncTime) return 0;
+      
+      this.lastSyncTime = syncTime;
+      let imported = 0;
+      
+      for (const extSession of parsed.sessions) {
+        // Convert extension session format to UniversalSession
+        const existingKey = this.findExistingSession(extSession.profileId || 'default', extSession.domain);
+        
+        if (!existingKey) {
+          const session: UniversalSession = {
+            id: extSession.id || crypto.randomUUID(),
+            profileId: extSession.profileId || 'default',
+            domain: extSession.domain,
+            subdomain: '',
+            fullUrl: extSession.url || `https://${extSession.domain}`,
+            siteName: extSession.siteName || generateSiteName(extSession.domain),
+            siteIcon: extSession.favicon,
+            cookies: (extSession.cookies || []).map((c: any) => ({
+              name: c.name,
+              value: c.value,
+              domain: c.domain,
+              path: c.path || '/',
+              expires: c.expires ? new Date(c.expires * 1000) : undefined,
+              secure: c.secure || false,
+              httpOnly: c.httpOnly || false,
+              sameSite: c.sameSite || 'Lax',
+              size: (c.name?.length || 0) + (c.value?.length || 0)
+            })),
+            localStorage: extSession.localStorage || {},
+            sessionStorage: extSession.sessionStorage || {},
+            tokens: (extSession.tokens || []).map((t: any, idx: number) => ({
+              id: `token-${idx}`,
+              type: t.type || 'custom',
+              name: t.name,
+              value: t.value,
+              maskedValue: t.maskedValue || maskValue(t.value),
+              source: t.source || 'cookie',
+              isValid: t.isValid !== false,
+              expiresAt: undefined
+            })),
+            headers: {},
+            capturedAt: new Date(extSession.capturedAt || Date.now()),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            status: extSession.status || 'active',
+            loginState: extSession.loginState || 'unknown',
+            autoRefresh: true,
+            metadata: {
+              userAgent: navigator.userAgent,
+              browser: this.detectBrowser(),
+              os: this.detectOS(),
+              deviceType: 'desktop',
+              screenResolution: `${screen.width}x${screen.height}`,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              language: navigator.language
+            }
+          };
+          
+          this.sessions.set(session.id, session);
+          this.notifyListeners(session);
+          imported++;
+        }
+      }
+      
+      if (imported > 0) {
+        this.saveToStorage();
+        console.log(`[Session Service] Imported ${imported} sessions from extension`);
+      }
+      
+      return imported;
+    } catch (error) {
+      console.error('Failed to import from extension:', error);
+      return 0;
+    }
+  }
+  
+  // Manually sync extension sessions
+  syncFromExtension(): Promise<number> {
+    return new Promise((resolve) => {
+      const imported = this.importFromExtension();
+      resolve(imported);
+    });
   }
 
   // Capture session from ANY website

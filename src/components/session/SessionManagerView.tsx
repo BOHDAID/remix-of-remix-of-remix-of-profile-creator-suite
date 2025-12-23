@@ -580,6 +580,22 @@ export function SessionManagerView() {
             <Upload className="w-4 h-4" />
             استيراد
           </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              const imported = universalSessionService.importFromExtension();
+              if (imported > 0) {
+                loadData();
+                toast.success(`تم استيراد ${imported} جلسة من الملحق`);
+              } else {
+                toast.info('لا توجد جلسات جديدة من الملحق');
+              }
+            }} 
+            className="gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            مزامنة الملحق
+          </Button>
           <Button variant="outline" onClick={exportAllSessions} className="gap-2">
             <Download className="w-4 h-4" />
             تصدير
