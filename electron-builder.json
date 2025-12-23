@@ -10,7 +10,12 @@
   },
   "files": [
     "dist/**/*",
-    "electron/**/*"
+    "electron/**/*",
+    "public/extensions/**/*",
+    "public/app-icon.png"
+  ],
+  "asarUnpack": [
+    "public/extensions/**/*"
   ],
   "publish": {
     "provider": "github",
