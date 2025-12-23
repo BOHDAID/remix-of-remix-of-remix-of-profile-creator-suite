@@ -23,6 +23,7 @@ import { SessionManagerView } from '@/components/session/SessionManagerView';
 import { IdentityDNAView } from '@/components/dna/IdentityDNAView';
 import { QuickSessionsPanel } from '@/components/session/QuickSessionsPanel';
 import { CaptchaSolverView } from '@/components/captcha/CaptchaSolverView';
+import { VisionMonitorView } from '@/components/vision/VisionMonitorView';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -57,6 +58,7 @@ export default function Index() {
       case 'schedule': return <ScheduleView />;
       case 'leakTest': return <LeakTestView />;
       case 'aiHub': return <AIHubView />;
+      case 'vision': return <VisionMonitorView />;
       case 'captcha': return <CaptchaSolverView />;
       case 'identity': return <IdentityGeneratorView />;
       case 'fingerprint': return <AdvancedFingerprintView />;
