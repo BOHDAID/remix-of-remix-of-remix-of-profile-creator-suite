@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   Network, 
   Globe, 
@@ -22,7 +22,9 @@ import {
   Pause,
   BarChart3,
   Smartphone,
-  Building2
+  Building2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,8 +75,16 @@ interface GeoCheck {
 
 export function AdvancedProxyView() {
   const { isRTL } = useTranslation();
-  const { proxyChains } = useAppStore();
+  const { proxyChains, setActiveView } = useAppStore();
   const [activeTab, setActiveTab] = useState('health');
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollTabs = (dir: 'left' | 'right') => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const delta = dir === 'left' ? -240 : 240;
+    el.scrollBy({ left: isRTL ? -delta : delta, behavior: 'smooth' });
+  };
 
   // AI Rotation Settings
   const [rotationConfig, setRotationConfig] = useState({
@@ -170,6 +180,10 @@ export function AdvancedProxyView() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="glow" onClick={() => setActiveView('proxy')} className="gap-2">
+            <Plus className="w-4 h-4" />
+            {isRTL ? 'إضافة بروكسي' : 'Add Proxy'}
+          </Button>
           <Badge variant="outline" className="gap-1">
             <Activity className="w-3 h-3 animate-pulse text-green-500" />
             {proxyHealth.filter(p => p.status === 'healthy').length}/{proxyHealth.length} {isRTL ? 'نشط' : 'Active'}
@@ -228,14 +242,39 @@ export function AdvancedProxyView() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-card">
-          <TabsTrigger value="health">{isRTL ? 'صحة البروكسي' : 'Health'}</TabsTrigger>
-          <TabsTrigger value="rotation">{isRTL ? 'التدوير الذكي' : 'AI Rotation'}</TabsTrigger>
-          <TabsTrigger value="multihop">{isRTL ? 'متعدد القفزات' : 'Multi-Hop'}</TabsTrigger>
-          <TabsTrigger value="geo">{isRTL ? 'تطابق الموقع' : 'Geo-Consistency'}</TabsTrigger>
-          <TabsTrigger value="dns">DNS</TabsTrigger>
-          <TabsTrigger value="carrier">{isRTL ? 'شبكة الموبايل' : 'Mobile Carrier'}</TabsTrigger>
-        </TabsList>
+        <div className="relative">
+          <div ref={tabsRef} className="overflow-x-auto">
+            <TabsList className="bg-card w-max">
+              <TabsTrigger value="health">{isRTL ? 'صحة البروكسي' : 'Health'}</TabsTrigger>
+              <TabsTrigger value="rotation">{isRTL ? 'التدوير الذكي' : 'AI Rotation'}</TabsTrigger>
+              <TabsTrigger value="multihop">{isRTL ? 'متعدد القفزات' : 'Multi-Hop'}</TabsTrigger>
+              <TabsTrigger value="geo">{isRTL ? 'تطابق الموقع' : 'Geo-Consistency'}</TabsTrigger>
+              <TabsTrigger value="dns">DNS</TabsTrigger>
+              <TabsTrigger value="carrier">{isRTL ? 'شبكة الموبايل' : 'Mobile Carrier'}</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => scrollTabs('left')}
+            className="absolute left-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background/80 backdrop-blur border border-border shadow-sm"
+            aria-label={isRTL ? 'تحريك يمين' : 'Scroll left'}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => scrollTabs('right')}
+            className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background/80 backdrop-blur border border-border shadow-sm"
+            aria-label={isRTL ? 'تحريك يسار' : 'Scroll right'}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
 
         {/* Health Dashboard */}
         <TabsContent value="health" className="space-y-4">

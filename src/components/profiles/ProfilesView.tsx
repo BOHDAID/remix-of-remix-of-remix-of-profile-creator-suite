@@ -7,6 +7,7 @@ import { ProfileTableView } from './ProfileTableView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { HorizontalScrollActions } from '@/components/ui/horizontal-scroll-actions';
 import { 
   Plus, Search, Users, LayoutGrid, List, Play, Square, 
   CheckSquare, XSquare, Loader2, Grid3X3, Minimize2, 
@@ -328,7 +329,7 @@ export function ProfilesView() {
             إدارة وتشغيل بروفايلات المتصفح
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <HorizontalScrollActions className="py-1">
           {/* Hidden file input for import */}
           <input
             ref={fileInputRef}
@@ -337,7 +338,7 @@ export function ProfilesView() {
             onChange={handleImportProfiles}
             className="hidden"
           />
-          
+
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="w-4 h-4 ml-2" />
             استيراد
@@ -346,8 +347,8 @@ export function ProfilesView() {
             <Download className="w-4 h-4 ml-2" />
             تصدير {selectedProfiles.size > 0 ? `(${selectedProfiles.size})` : ''}
           </Button>
-          <Button 
-            variant={isSelectionMode ? "default" : "outline"} 
+          <Button
+            variant={isSelectionMode ? 'default' : 'outline'}
             onClick={toggleSelectionMode}
           >
             <CheckSquare className="w-4 h-4 ml-2" />
@@ -357,7 +358,7 @@ export function ProfilesView() {
             <Plus className="w-4 h-4 ml-2" />
             إنشاء بروفايل
           </Button>
-        </div>
+        </HorizontalScrollActions>
       </div>
 
       {/* Selection Actions Bar */}
