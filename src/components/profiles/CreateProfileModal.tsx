@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -21,9 +23,42 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Globe, Shield, Puzzle, FileText, AlertTriangle, Fingerprint } from 'lucide-react';
+import { 
+  Globe, Shield, Puzzle, FileText, AlertTriangle, Fingerprint, 
+  CheckCircle2, XCircle, Loader2, RefreshCw, Zap, Lock, Eye,
+  MousePointer, Key, Camera, Bot
+} from 'lucide-react';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
 import { FingerprintTab } from './FingerprintTab';
+import { testProxy, ProxyConfig } from '@/lib/proxyTester';
+
+// الملحقات المدمجة
+const BUILT_IN_EXTENSIONS = [
+  {
+    id: 'builtin-auto-login',
+    name: 'تسجيل الدخول التلقائي',
+    description: 'حفظ واستعادة بيانات تسجيل الدخول تلقائياً',
+    icon: 'Key',
+    path: 'auto-login',
+    category: 'automation'
+  },
+  {
+    id: 'builtin-session-capture',
+    name: 'التقاط الجلسات',
+    description: 'التقاط وحفظ جلسات المتصفح (الكوكيز والتخزين المحلي)',
+    icon: 'Camera',
+    path: 'session-capture',
+    category: 'session'
+  },
+  {
+    id: 'builtin-captcha-solver',
+    name: 'حل CAPTCHA بالذكاء الاصطناعي',
+    description: 'حل CAPTCHA تلقائياً باستخدام الذكاء الاصطناعي',
+    icon: 'Bot',
+    path: 'captcha-solver',
+    category: 'automation'
+  },
+];
 
 interface CreateProfileModalProps {
   open: boolean;
@@ -44,11 +79,19 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
   const [proxyPort, setProxyPort] = useState('');
   const [proxyUsername, setProxyUsername] = useState('');
   const [proxyPassword, setProxyPassword] = useState('');
+  const [proxyAutoSwitch, setProxyAutoSwitch] = useState(false);
   const [selectedExtensions, setSelectedExtensions] = useState<string[]>([]);
+  const [selectedBuiltInExtensions, setSelectedBuiltInExtensions] = useState<string[]>([]);
   const [userAgent, setUserAgent] = useState('');
   const [notes, setNotes] = useState('');
   const [fingerprint, setFingerprint] = useState<FingerprintSettings | undefined>(undefined);
   const [autoLoadExtensions, setAutoLoadExtensions] = useState(true);
+  
+  // حالات البروكسي
+  const [proxyTesting, setProxyTesting] = useState(false);
+  const [proxyStatus, setProxyStatus] = useState<'untested' | 'active' | 'failed'>('untested');
+  const [proxyLatency, setProxyLatency] = useState<number | null>(null);
+  const [proxyLocation, setProxyLocation] = useState<string | null>(null);
 
   useEffect(() => {
     if (editProfile) {
@@ -60,8 +103,11 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         setProxyPort(editProfile.proxy.port);
         setProxyUsername(editProfile.proxy.username || '');
         setProxyPassword(editProfile.proxy.password || '');
+        setProxyAutoSwitch(editProfile.proxy.autoSwitch || false);
+        setProxyStatus(editProfile.proxy.status === 'active' ? 'active' : editProfile.proxy.status === 'failed' ? 'failed' : 'untested');
       }
-      setSelectedExtensions(editProfile.extensions);
+      setSelectedExtensions(editProfile.extensions.filter(id => !id.startsWith('builtin-')));
+      setSelectedBuiltInExtensions(editProfile.extensions.filter(id => id.startsWith('builtin-')));
       setUserAgent(editProfile.userAgent);
       setNotes(editProfile.notes);
       setFingerprint(editProfile.fingerprint);
@@ -79,11 +125,55 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
     setProxyPort('');
     setProxyUsername('');
     setProxyPassword('');
+    setProxyAutoSwitch(false);
     setSelectedExtensions([]);
+    setSelectedBuiltInExtensions([]);
     setUserAgent(settings.defaultUserAgent);
     setNotes('');
     setFingerprint(undefined);
     setAutoLoadExtensions(true);
+    setProxyStatus('untested');
+    setProxyLatency(null);
+    setProxyLocation(null);
+  };
+
+  const handleTestProxy = async () => {
+    if (!proxyHost || !proxyPort) {
+      toast.error('يرجى إدخال عنوان البروكسي والمنفذ');
+      return;
+    }
+
+    setProxyTesting(true);
+    setProxyStatus('untested');
+    
+    try {
+      const config: ProxyConfig = {
+        type: proxyType,
+        host: proxyHost,
+        port: proxyPort,
+        username: proxyUsername || undefined,
+        password: proxyPassword || undefined,
+      };
+      
+      const result = await testProxy(config);
+      
+      if (result.success) {
+        setProxyStatus('active');
+        setProxyLatency(result.latency);
+        setProxyLocation(result.country ? `${result.country}${result.city ? `, ${result.city}` : ''}` : null);
+        toast.success(`البروكسي يعمل! التأخير: ${result.latency}ms`);
+      } else {
+        setProxyStatus('failed');
+        setProxyLatency(null);
+        setProxyLocation(null);
+        toast.error(result.error || 'فشل اختبار البروكسي');
+      }
+    } catch (error) {
+      setProxyStatus('failed');
+      toast.error('حدث خطأ أثناء اختبار البروكسي');
+    } finally {
+      setProxyTesting(false);
+    }
   };
 
   const handleSubmit = () => {
@@ -114,14 +204,21 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
           port: proxyPort,
           username: proxyUsername || undefined,
           password: proxyPassword || undefined,
+          status: proxyStatus === 'active' ? 'active' : proxyStatus === 'failed' ? 'failed' : undefined,
+          speed: proxyLatency || undefined,
+          autoSwitch: proxyAutoSwitch,
+          lastTested: proxyStatus !== 'untested' ? new Date() : undefined,
         }
       : null;
+
+    // دمج الملحقات المدمجة مع الملحقات المخصصة
+    const allExtensions = [...selectedExtensions, ...selectedBuiltInExtensions];
 
     if (editProfile) {
       updateProfile(editProfile.id, {
         name,
         proxy,
-        extensions: selectedExtensions,
+        extensions: allExtensions,
         userAgent: userAgent || settings.defaultUserAgent,
         notes,
         fingerprint,
@@ -133,7 +230,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         id: crypto.randomUUID(),
         name,
         proxy,
-        extensions: selectedExtensions,
+        extensions: allExtensions,
         userAgent: userAgent || settings.defaultUserAgent,
         status: 'stopped',
         createdAt: new Date(),
@@ -155,6 +252,23 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         ? prev.filter(id => id !== extId)
         : [...prev, extId]
     );
+  };
+
+  const toggleBuiltInExtension = (extId: string) => {
+    setSelectedBuiltInExtensions(prev => 
+      prev.includes(extId)
+        ? prev.filter(id => id !== extId)
+        : [...prev, extId]
+    );
+  };
+
+  const getExtensionIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'Key': return <Key className="w-5 h-5" />;
+      case 'Camera': return <Camera className="w-5 h-5" />;
+      case 'Bot': return <Bot className="w-5 h-5" />;
+      default: return <Puzzle className="w-5 h-5" />;
+    }
   };
 
   return (
@@ -242,15 +356,33 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
           </TabsContent>
 
           <TabsContent value="proxy" className="space-y-4 mt-4">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/50">
-              <Checkbox
-                id="useProxy"
-                checked={useProxy}
-                onCheckedChange={(checked) => setUseProxy(checked as boolean)}
-              />
-              <Label htmlFor="useProxy" className="cursor-pointer">
-                استخدام بروكسي
-              </Label>
+            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="useProxy"
+                  checked={useProxy}
+                  onCheckedChange={(checked) => setUseProxy(checked as boolean)}
+                />
+                <Label htmlFor="useProxy" className="cursor-pointer">
+                  استخدام بروكسي
+                </Label>
+              </div>
+              
+              {useProxy && proxyStatus !== 'untested' && (
+                <Badge variant={proxyStatus === 'active' ? 'default' : 'destructive'} className="flex items-center gap-1">
+                  {proxyStatus === 'active' ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3" />
+                      نشط {proxyLatency && `(${proxyLatency}ms)`}
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3" />
+                      فاشل
+                    </>
+                  )}
+                </Badge>
+              )}
             </div>
 
             {useProxy && (
@@ -317,6 +449,53 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
                     />
                   </div>
                 </div>
+
+                {/* خيارات متقدمة للبروكسي */}
+                <div className="p-4 rounded-lg bg-muted/30 border border-border space-y-4">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-primary" />
+                    خيارات متقدمة
+                  </h4>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label htmlFor="autoSwitch" className="cursor-pointer">التبديل التلقائي</Label>
+                      <p className="text-xs text-muted-foreground">التبديل لبروكسي آخر عند الفشل</p>
+                    </div>
+                    <Switch
+                      id="autoSwitch"
+                      checked={proxyAutoSwitch}
+                      onCheckedChange={setProxyAutoSwitch}
+                    />
+                  </div>
+
+                  {proxyLocation && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Globe className="w-4 h-4" />
+                      <span>الموقع: {proxyLocation}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* زر اختبار البروكسي */}
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleTestProxy}
+                  disabled={proxyTesting || !proxyHost || !proxyPort}
+                >
+                  {proxyTesting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                      جاري الاختبار...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 ml-2" />
+                      اختبار البروكسي
+                    </>
+                  )}
+                </Button>
               </div>
             )}
           </TabsContent>
@@ -347,34 +526,84 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
               />
             </div>
 
-            {extensions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Puzzle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>لا توجد ملحقات مضافة</p>
-                <p className="text-sm">اذهب إلى قسم الملحقات لإضافة ملحقات جديدة</p>
-              </div>
-            ) : (
+            {/* الملحقات المدمجة */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2 text-muted-foreground">
+                <Zap className="w-4 h-4 text-primary" />
+                الملحقات المدمجة
+              </h4>
               <div className="space-y-2">
-                {extensions.map((ext) => (
+                {BUILT_IN_EXTENSIONS.map((ext) => (
                   <label
                     key={ext.id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                      selectedBuiltInExtensions.includes(ext.id)
+                        ? 'bg-primary/15 border border-primary/30'
+                        : 'bg-muted/50 hover:bg-muted border border-transparent'
+                    }`}
                   >
                     <Checkbox
-                      checked={selectedExtensions.includes(ext.id)}
-                      onCheckedChange={() => toggleExtension(ext.id)}
+                      checked={selectedBuiltInExtensions.includes(ext.id)}
+                      onCheckedChange={() => toggleBuiltInExtension(ext.id)}
                     />
+                    <div className={`p-2 rounded-lg ${
+                      selectedBuiltInExtensions.includes(ext.id) ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {getExtensionIcon(ext.icon)}
+                    </div>
                     <div className="flex-1">
                       <p className="font-medium">{ext.name}</p>
                       <p className="text-sm text-muted-foreground">{ext.description}</p>
                     </div>
+                    <Badge variant="secondary" className="text-xs">
+                      مدمج
+                    </Badge>
                   </label>
                 ))}
+              </div>
+            </div>
+
+            {/* الملحقات المخصصة */}
+            {extensions.length > 0 && (
+              <div className="space-y-3 mt-6">
+                <h4 className="font-medium text-sm flex items-center gap-2 text-muted-foreground">
+                  <Puzzle className="w-4 h-4" />
+                  الملحقات المخصصة
+                </h4>
+                <div className="space-y-2">
+                  {extensions.map((ext) => (
+                    <label
+                      key={ext.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                        selectedExtensions.includes(ext.id)
+                          ? 'bg-primary/15 border border-primary/30'
+                          : 'bg-muted/50 hover:bg-muted border border-transparent'
+                      }`}
+                    >
+                      <Checkbox
+                        checked={selectedExtensions.includes(ext.id)}
+                        onCheckedChange={() => toggleExtension(ext.id)}
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium">{ext.name}</p>
+                        <p className="text-sm text-muted-foreground">{ext.description}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {extensions.length === 0 && (
+              <div className="text-center py-4 text-muted-foreground border-t border-border mt-4">
+                <p className="text-sm">لا توجد ملحقات مخصصة مضافة</p>
+                <p className="text-xs">اذهب إلى قسم الملحقات لإضافة ملحقات جديدة</p>
               </div>
             )}
           </TabsContent>
 
           <TabsContent value="advanced" className="space-y-4 mt-4">
+            {/* User Agent */}
             <div className="space-y-2">
               <Label htmlFor="userAgent">User Agent</Label>
               <Textarea
@@ -389,6 +618,52 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
               <p className="text-xs text-muted-foreground">
                 اتركه فارغاً لاستخدام User Agent الافتراضي
               </p>
+            </div>
+
+            {/* خيارات أمان متقدمة */}
+            <div className="p-4 rounded-lg bg-muted/30 border border-border space-y-4">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Lock className="w-4 h-4 text-primary" />
+                خيارات الخصوصية
+              </h4>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Eye className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">منع WebRTC Leak</p>
+                      <p className="text-xs text-muted-foreground">منع تسريب IP الحقيقي عبر WebRTC</p>
+                    </div>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <MousePointer className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">محاكاة حركة الماوس</p>
+                      <p className="text-xs text-muted-foreground">محاكاة سلوك المستخدم الطبيعي</p>
+                    </div>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+              </div>
+            </div>
+
+            {/* ملخص البروفايل */}
+            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" />
+                ملخص البروفايل
+              </h4>
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <span>البروكسي: {useProxy ? `${proxyType}://${proxyHost}:${proxyPort}` : 'غير مفعل'}</span>
+                <span>الملحقات: {selectedExtensions.length + selectedBuiltInExtensions.length}</span>
+                <span>البصمة: {fingerprint ? 'مخصصة' : 'افتراضية'}</span>
+                <span>تحميل تلقائي: {autoLoadExtensions ? 'نعم' : 'لا'}</span>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
