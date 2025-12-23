@@ -4,7 +4,8 @@
 (function() {
   'use strict';
   
-  const SUPABASE_URL = 'https://eibrsilezflxgzatuvyz.supabase.co';
+  // Supabase Edge Function URL - Use the project's URL
+  const SUPABASE_URL = 'https://yygquhqavbandcqkzzcn.supabase.co';
   
   const SOLVER_CONFIG = {
     checkInterval: 2000,
