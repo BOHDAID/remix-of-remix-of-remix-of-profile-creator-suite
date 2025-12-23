@@ -1,19 +1,7 @@
 import { 
-  Users, 
-  Puzzle, 
-  Settings, 
-  Key,
-  ChevronLeft,
-  Download,
-  Shield,
-  Database,
-  Network,
-  LayoutDashboard,
-  Calendar,
-  ShieldCheck,
-  Brain,
-  User,
-  Fingerprint
+  Users, Puzzle, Settings, Key, ChevronLeft, Download, Shield, Database, Network,
+  LayoutDashboard, Calendar, ShieldCheck, Brain, User, Fingerprint, Bot, Thermometer,
+  MousePointer2, Cookie, Dna
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -32,6 +20,11 @@ export function Sidebar() {
   const menuItems = [
     { id: 'dashboard' as const, label: t('dashboard'), icon: LayoutDashboard },
     { id: 'profiles' as const, label: t('profiles'), icon: Users },
+    { id: 'autonomous' as const, label: isRTL ? 'الوضع التلقائي' : 'Autonomous', icon: Bot },
+    { id: 'dna' as const, label: isRTL ? 'DNA الهوية' : 'Identity DNA', icon: Dna },
+    { id: 'thermal' as const, label: isRTL ? 'التحكم الحراري' : 'Thermal', icon: Thermometer },
+    { id: 'behavioral' as const, label: isRTL ? 'المحاكاة' : 'Behavioral', icon: MousePointer2 },
+    { id: 'session' as const, label: isRTL ? 'الجلسات' : 'Sessions', icon: Cookie },
     { id: 'aiHub' as const, label: isRTL ? 'مركز AI' : 'AI Hub', icon: Brain },
     { id: 'identity' as const, label: isRTL ? 'الهويات' : 'Identity', icon: User },
     { id: 'fingerprint' as const, label: isRTL ? 'البصمة' : 'Fingerprint', icon: Fingerprint },
