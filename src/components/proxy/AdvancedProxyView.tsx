@@ -24,7 +24,9 @@ import {
   Smartphone,
   Building2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Loader2,
+  ClipboardPaste
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,23 +40,82 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { testProxyWithCors, ProxyTestResult } from '@/lib/proxyTester';
+import { ProxyChain } from '@/types';
 
-interface ProxyHealth {
-  id: string;
-  name: string;
-  host: string;
-  type: string;
-  status: 'healthy' | 'degraded' | 'down';
+// Parse proxy string in various formats
+function parseProxyString(input: string): { type: 'http' | 'https' | 'socks4' | 'socks5'; host: string; port: string; username?: string; password?: string } | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Patterns to match:
+  // type://user:pass@host:port
+  // type://host:port
+  // user:pass@host:port
+  // host:port:user:pass
+  // host:port
+
+  let type: 'http' | 'https' | 'socks4' | 'socks5' = 'http';
+  let host = '';
+  let port = '';
+  let username: string | undefined;
+  let password: string | undefined;
+
+  // Check for protocol prefix
+  const protocolMatch = trimmed.match(/^(https?|socks[45]):\/\//i);
+  let remaining = trimmed;
+  if (protocolMatch) {
+    const proto = protocolMatch[1].toLowerCase();
+    if (proto === 'socks5') type = 'socks5';
+    else if (proto === 'socks4') type = 'socks4';
+    else if (proto === 'https') type = 'https';
+    else type = 'http';
+    remaining = trimmed.slice(protocolMatch[0].length);
+  }
+
+  // Check for user:pass@host:port
+  const atMatch = remaining.match(/^([^:]+):([^@]+)@(.+):(\d+)$/);
+  if (atMatch) {
+    username = atMatch[1];
+    password = atMatch[2];
+    host = atMatch[3];
+    port = atMatch[4];
+    return { type, host, port, username, password };
+  }
+
+  // Check for host:port:user:pass
+  const colonMatch = remaining.match(/^([^:]+):(\d+):([^:]+):(.+)$/);
+  if (colonMatch) {
+    host = colonMatch[1];
+    port = colonMatch[2];
+    username = colonMatch[3];
+    password = colonMatch[4];
+    return { type, host, port, username, password };
+  }
+
+  // Check for host:port
+  const simpleMatch = remaining.match(/^([^:]+):(\d+)$/);
+  if (simpleMatch) {
+    host = simpleMatch[1];
+    port = simpleMatch[2];
+    return { type, host, port };
+  }
+
+  return null;
+}
+
+interface ProxyHealthInfo {
+  status: 'healthy' | 'degraded' | 'down' | 'untested';
   latency: number;
-  uptime: number;
-  lastCheck: Date;
-  bandwidth: { used: number; limit: number };
-  requests: number;
-  country: string;
+  country?: string;
+  city?: string;
+  ip?: string;
+  lastTested?: Date;
 }
 
 interface MultiHopChain {
@@ -76,10 +137,16 @@ interface GeoCheck {
 
 export function AdvancedProxyView() {
   const { isRTL } = useTranslation();
-  const { proxyChains, addProxyChain, setActiveView } = useAppStore();
+  const { proxyChains, addProxyChain, updateProxyChain, deleteProxyChain, setActiveView } = useAppStore();
   const [activeTab, setActiveTab] = useState('health');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const tabsRef = useRef<HTMLDivElement | null>(null);
+  const [testingProxyId, setTestingProxyId] = useState<string | null>(null);
+  const [proxyHealthMap, setProxyHealthMap] = useState<Map<string, ProxyHealthInfo>>(new Map());
+
+  // Paste input state
+  const [pasteInput, setPasteInput] = useState('');
+  const [parsedPreview, setParsedPreview] = useState<ReturnType<typeof parseProxyString> | null>(null);
 
   const scrollTabs = (dir: 'left' | 'right') => {
     const el = tabsRef.current;
@@ -103,14 +170,31 @@ export function AdvancedProxyView() {
     setProxyPort('');
     setProxyUsername('');
     setProxyPassword('');
+    setPasteInput('');
+    setParsedPreview(null);
+  };
+
+  // Auto-parse pasted proxy
+  const handlePasteChange = (value: string) => {
+    setPasteInput(value);
+    const parsed = parseProxyString(value);
+    setParsedPreview(parsed);
+    if (parsed) {
+      setProxyType(parsed.type);
+      setProxyHost(parsed.host);
+      setProxyPort(parsed.port);
+      setProxyUsername(parsed.username || '');
+      setProxyPassword(parsed.password || '');
+    }
   };
 
   const handleAddProxy = () => {
-    if (!proxyName.trim() || !proxyHost.trim() || !proxyPort.trim()) {
-      toast.error(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+    if (!proxyHost.trim() || !proxyPort.trim()) {
+      toast.error(isRTL ? 'يرجى ملء العنوان والمنفذ' : 'Please fill host and port');
       return;
     }
 
+    const name = proxyName.trim() || `${proxyHost}:${proxyPort}`;
     const proxy = {
       type: proxyType,
       host: proxyHost.trim(),
@@ -122,9 +206,9 @@ export function AdvancedProxyView() {
       speed: undefined,
     };
 
-    const chain = {
+    const chain: ProxyChain = {
       id: crypto.randomUUID(),
-      name: proxyName.trim(),
+      name,
       proxies: [proxy],
       enabled: true,
     };
@@ -134,6 +218,88 @@ export function AdvancedProxyView() {
     resetForm();
     toast.success(isRTL ? 'تم إضافة البروكسي بنجاح' : 'Proxy added successfully');
   };
+
+  // Real proxy test
+  const handleTestProxy = async (chain: ProxyChain) => {
+    const proxy = chain.proxies[0];
+    if (!proxy) return;
+
+    setTestingProxyId(chain.id);
+    toast.info(isRTL ? 'جاري فحص البروكسي...' : 'Testing proxy...');
+
+    try {
+      const result = await testProxyWithCors({
+        type: proxy.type,
+        host: proxy.host,
+        port: proxy.port,
+        username: proxy.username,
+        password: proxy.password,
+      });
+
+      const healthInfo: ProxyHealthInfo = {
+        status: result.success ? (result.latency < 200 ? 'healthy' : 'degraded') : 'down',
+        latency: result.latency,
+        country: result.country,
+        city: result.city,
+        ip: result.ip,
+        lastTested: new Date(),
+      };
+
+      setProxyHealthMap(prev => new Map(prev).set(chain.id, healthInfo));
+
+      // Update proxy in store
+      const updatedProxies = chain.proxies.map(p => ({
+        ...p,
+        status: result.success ? 'active' as const : 'failed' as const,
+        speed: result.latency,
+        lastTested: new Date(),
+      }));
+      updateProxyChain(chain.id, { proxies: updatedProxies });
+
+      if (result.success) {
+        toast.success(
+          isRTL ? `البروكسي يعمل - ${result.latency}ms` : `Proxy working - ${result.latency}ms`,
+          { description: result.country ? `${result.city || ''}, ${result.country}` : undefined }
+        );
+      } else {
+        toast.error(isRTL ? 'فشل الاتصال بالبروكسي' : 'Proxy connection failed', {
+          description: result.error,
+        });
+      }
+    } catch (err) {
+      toast.error(isRTL ? 'خطأ في الفحص' : 'Test error');
+    }
+
+    setTestingProxyId(null);
+  };
+
+  const handleDeleteProxy = (id: string) => {
+    deleteProxyChain(id);
+    toast.success(isRTL ? 'تم حذف البروكسي' : 'Proxy deleted');
+  };
+
+  const getHealthInfo = (chainId: string): ProxyHealthInfo => {
+    return proxyHealthMap.get(chainId) || { status: 'untested', latency: 0 };
+  };
+
+  // Count stats from real data
+  const healthyCount = proxyChains.filter(c => {
+    const h = proxyHealthMap.get(c.id);
+    return h?.status === 'healthy';
+  }).length;
+  const degradedCount = proxyChains.filter(c => {
+    const h = proxyHealthMap.get(c.id);
+    return h?.status === 'degraded';
+  }).length;
+  const downCount = proxyChains.filter(c => {
+    const h = proxyHealthMap.get(c.id);
+    return h?.status === 'down';
+  }).length;
+  const avgLatency = proxyChains.length > 0
+    ? Math.round(
+        proxyChains.reduce((sum, c) => sum + (proxyHealthMap.get(c.id)?.latency || 0), 0) / proxyChains.length
+      )
+    : 0;
 
   // AI Rotation Settings
   const [rotationConfig, setRotationConfig] = useState({
@@ -168,41 +334,11 @@ export function AdvancedProxyView() {
     networkType: '5G' as '3G' | '4G' | '5G' | 'LTE'
   });
 
-  // Sample Health Data
-  const [proxyHealth] = useState<ProxyHealth[]>([
-    { id: '1', name: 'US Residential 1', host: '192.168.1.1:8080', type: 'HTTP', status: 'healthy', latency: 45, uptime: 99.9, lastCheck: new Date(), bandwidth: { used: 2.5, limit: 10 }, requests: 15234, country: 'US' },
-    { id: '2', name: 'UK Datacenter', host: '10.0.0.1:3128', type: 'SOCKS5', status: 'healthy', latency: 78, uptime: 99.5, lastCheck: new Date(), bandwidth: { used: 5.2, limit: 10 }, requests: 8921, country: 'UK' },
-    { id: '3', name: 'DE Mobile', host: '172.16.0.1:1080', type: 'SOCKS5', status: 'degraded', latency: 156, uptime: 95.2, lastCheck: new Date(), bandwidth: { used: 8.1, limit: 10 }, requests: 4521, country: 'DE' },
-    { id: '4', name: 'JP Residential', host: '192.168.2.1:8080', type: 'HTTP', status: 'down', latency: 0, uptime: 0, lastCheck: new Date(), bandwidth: { used: 0, limit: 10 }, requests: 0, country: 'JP' },
-  ]);
-
   // Multi-Hop Chains
-  const [multiHopChains, setMultiHopChains] = useState<MultiHopChain[]>([
-    {
-      id: '1',
-      name: 'Triple Layer',
-      hops: [
-        { order: 1, host: '192.168.1.1', country: 'US', latency: 45 },
-        { order: 2, host: '10.0.0.1', country: 'UK', latency: 78 },
-        { order: 3, host: '172.16.0.1', country: 'DE', latency: 92 }
-      ],
-      enabled: true,
-      totalLatency: 215
-    }
-  ]);
+  const [multiHopChains, setMultiHopChains] = useState<MultiHopChain[]>([]);
 
   // Geo Consistency Checks
-  const [geoChecks] = useState<GeoCheck[]>([
-    { id: '1', proxyName: 'US Residential 1', expected: { country: 'US', city: 'New York', timezone: 'America/New_York' }, actual: { country: 'US', city: 'New York', timezone: 'America/New_York' }, consistent: true, checkedAt: new Date() },
-    { id: '2', proxyName: 'UK Datacenter', expected: { country: 'UK', city: 'London', timezone: 'Europe/London' }, actual: { country: 'UK', city: 'Manchester', timezone: 'Europe/London' }, consistent: false, checkedAt: new Date() },
-  ]);
-
-  const runSpeedTest = (proxyId: string) => {
-    toast.success(isRTL ? 'جاري اختبار السرعة...' : 'Running speed test...');
-    setTimeout(() => {
-      toast.success(isRTL ? 'تم اختبار السرعة: 45ms' : 'Speed test complete: 45ms');
-    }, 2000);
-  };
+  const [geoChecks] = useState<GeoCheck[]>([]);
 
   const warmupProxy = (proxyId: string) => {
     toast.success(isRTL ? 'جاري تسخين البروكسي...' : 'Warming up proxy...');
@@ -235,7 +371,7 @@ export function AdvancedProxyView() {
           </Button>
           <Badge variant="outline" className="gap-1">
             <Activity className="w-3 h-3 animate-pulse text-green-500" />
-            {proxyHealth.filter(p => p.status === 'healthy').length}/{proxyHealth.length} {isRTL ? 'نشط' : 'Active'}
+            {healthyCount}/{proxyChains.length} {isRTL ? 'نشط' : 'Active'}
           </Badge>
         </div>
       </div>
@@ -247,7 +383,7 @@ export function AdvancedProxyView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{isRTL ? 'صحي' : 'Healthy'}</p>
-                <p className="text-2xl font-bold text-green-400">{proxyHealth.filter(p => p.status === 'healthy').length}</p>
+                <p className="text-2xl font-bold text-green-400">{healthyCount}</p>
               </div>
               <CheckCircle2 className="w-8 h-8 text-green-400/50" />
             </div>
@@ -258,7 +394,7 @@ export function AdvancedProxyView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{isRTL ? 'متدهور' : 'Degraded'}</p>
-                <p className="text-2xl font-bold text-yellow-400">{proxyHealth.filter(p => p.status === 'degraded').length}</p>
+                <p className="text-2xl font-bold text-yellow-400">{degradedCount}</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-yellow-400/50" />
             </div>
@@ -269,7 +405,7 @@ export function AdvancedProxyView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{isRTL ? 'معطل' : 'Down'}</p>
-                <p className="text-2xl font-bold text-red-400">{proxyHealth.filter(p => p.status === 'down').length}</p>
+                <p className="text-2xl font-bold text-red-400">{downCount}</p>
               </div>
               <XCircle className="w-8 h-8 text-red-400/50" />
             </div>
@@ -280,9 +416,7 @@ export function AdvancedProxyView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{isRTL ? 'متوسط التأخير' : 'Avg Latency'}</p>
-                <p className="text-2xl font-bold text-blue-400">
-                  {Math.round(proxyHealth.filter(p => p.status !== 'down').reduce((a, p) => a + p.latency, 0) / proxyHealth.filter(p => p.status !== 'down').length || 0)}ms
-                </p>
+                <p className="text-2xl font-bold text-blue-400">{avgLatency}ms</p>
               </div>
               <Zap className="w-8 h-8 text-blue-400/50" />
             </div>
@@ -335,68 +469,117 @@ export function AdvancedProxyView() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-3">
-                  {proxyHealth.map((proxy) => (
-                    <div 
-                      key={proxy.id}
-                      className={cn(
-                        "p-4 rounded-lg border",
-                        proxy.status === 'healthy' && "bg-green-500/5 border-green-500/20",
-                        proxy.status === 'degraded' && "bg-yellow-500/5 border-yellow-500/20",
-                        proxy.status === 'down' && "bg-red-500/5 border-red-500/20"
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-3 h-3 rounded-full",
-                            proxy.status === 'healthy' && "bg-green-500",
-                            proxy.status === 'degraded' && "bg-yellow-500",
-                            proxy.status === 'down' && "bg-red-500"
-                          )} />
-                          <div>
-                            <p className="font-medium">{proxy.name}</p>
-                            <p className="text-xs text-muted-foreground">{proxy.host} • {proxy.type}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{proxy.country}</Badge>
-                          <Button variant="ghost" size="sm" onClick={() => runSpeedTest(proxy.id)}>
-                            <Zap className="w-4 h-4 mr-1" />
-                            {isRTL ? 'اختبار' : 'Test'}
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => warmupProxy(proxy.id)}>
-                            <RefreshCw className="w-4 h-4 mr-1" />
-                            {isRTL ? 'تسخين' : 'Warmup'}
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">{isRTL ? 'التأخير' : 'Latency'}</p>
-                          <p className="font-medium">{proxy.latency}ms</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">{isRTL ? 'وقت التشغيل' : 'Uptime'}</p>
-                          <p className="font-medium">{proxy.uptime}%</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">{isRTL ? 'الطلبات' : 'Requests'}</p>
-                          <p className="font-medium">{proxy.requests.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">{isRTL ? 'البيانات' : 'Bandwidth'}</p>
-                          <div className="flex items-center gap-2">
-                            <Progress value={(proxy.bandwidth.used / proxy.bandwidth.limit) * 100} className="h-2" />
-                            <span className="text-xs">{proxy.bandwidth.used}/{proxy.bandwidth.limit}GB</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              {proxyChains.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Network className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>{isRTL ? 'لا توجد بروكسيات' : 'No proxies added'}</p>
+                  <p className="text-sm mt-1">{isRTL ? 'أضف بروكسي للبدء' : 'Add a proxy to get started'}</p>
+                  <Button variant="glow" className="mt-4" onClick={() => setShowAddDialog(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    {isRTL ? 'إضافة بروكسي' : 'Add Proxy'}
+                  </Button>
                 </div>
-              </ScrollArea>
+              ) : (
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-3">
+                    {proxyChains.map((chain) => {
+                      const proxy = chain.proxies[0];
+                      const health = getHealthInfo(chain.id);
+                      const isTesting = testingProxyId === chain.id;
+
+                      return (
+                        <div 
+                          key={chain.id}
+                          className={cn(
+                            "p-4 rounded-lg border",
+                            health.status === 'healthy' && "bg-green-500/5 border-green-500/20",
+                            health.status === 'degraded' && "bg-yellow-500/5 border-yellow-500/20",
+                            health.status === 'down' && "bg-red-500/5 border-red-500/20",
+                            health.status === 'untested' && "bg-muted/50 border-border"
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-3 h-3 rounded-full",
+                                health.status === 'healthy' && "bg-green-500",
+                                health.status === 'degraded' && "bg-yellow-500",
+                                health.status === 'down' && "bg-red-500",
+                                health.status === 'untested' && "bg-gray-500"
+                              )} />
+                              <div>
+                                <p className="font-medium">{chain.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {proxy?.type?.toUpperCase()}://{proxy?.host}:{proxy?.port}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {health.country && (
+                                <Badge variant="outline">{health.country}</Badge>
+                              )}
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleTestProxy(chain)}
+                                disabled={isTesting}
+                              >
+                                {isTesting ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Zap className="w-4 h-4 mr-1" />
+                                )}
+                                {isRTL ? 'فحص' : 'Test'}
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleDeleteProxy(chain.id)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">{isRTL ? 'الحالة' : 'Status'}</p>
+                              <p className="font-medium capitalize">
+                                {health.status === 'untested' 
+                                  ? (isRTL ? 'لم يُختبر' : 'Untested')
+                                  : health.status === 'healthy'
+                                    ? (isRTL ? 'يعمل' : 'Healthy')
+                                    : health.status === 'degraded'
+                                      ? (isRTL ? 'بطيء' : 'Slow')
+                                      : (isRTL ? 'معطل' : 'Down')
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">{isRTL ? 'التأخير' : 'Latency'}</p>
+                              <p className="font-medium">{health.latency > 0 ? `${health.latency}ms` : '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">{isRTL ? 'الموقع' : 'Location'}</p>
+                              <p className="font-medium">
+                                {health.city && health.country 
+                                  ? `${health.city}, ${health.country}` 
+                                  : health.country || '-'
+                                }
+                              </p>
+                            </div>
+                          </div>
+                          {health.ip && (
+                            <p className="text-xs text-muted-foreground mt-2">
+                              IP: {health.ip}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -688,7 +871,7 @@ export function AdvancedProxyView() {
 
       {/* Add Proxy Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="bg-card border-border">
+        <DialogContent className="bg-card border-border max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="w-5 h-5 text-primary" />
@@ -697,8 +880,57 @@ export function AdvancedProxyView() {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            {/* Paste Input */}
             <div className="space-y-2">
-              <Label>{isRTL ? 'اسم البروكسي' : 'Proxy Name'}</Label>
+              <Label className="flex items-center gap-2">
+                <ClipboardPaste className="w-4 h-4" />
+                {isRTL ? 'لصق البروكسي (تحليل تلقائي)' : 'Paste Proxy (Auto-detect)'}
+              </Label>
+              <Textarea
+                value={pasteInput}
+                onChange={(e) => handlePasteChange(e.target.value)}
+                placeholder={isRTL 
+                  ? 'الصق البروكسي بأي صيغة:\nhost:port\nuser:pass@host:port\nsocks5://host:port'
+                  : 'Paste proxy in any format:\nhost:port\nuser:pass@host:port\nsocks5://host:port'
+                }
+                className="bg-input font-mono text-sm min-h-[80px]"
+                dir="ltr"
+              />
+              {parsedPreview && (
+                <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/30 text-sm">
+                  <p className="text-green-400 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isRTL ? 'تم التعرف على البروكسي' : 'Proxy detected'}
+                  </p>
+                  <p className="text-muted-foreground text-xs mt-1 font-mono">
+                    {parsedPreview.type.toUpperCase()}://{parsedPreview.host}:{parsedPreview.port}
+                    {parsedPreview.username && ` (${isRTL ? 'مع مصادقة' : 'with auth'})`}
+                  </p>
+                </div>
+              )}
+              {pasteInput && !parsedPreview && (
+                <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-sm">
+                  <p className="text-red-400 flex items-center gap-1">
+                    <XCircle className="w-4 h-4" />
+                    {isRTL ? 'صيغة غير معروفة' : 'Unknown format'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">
+                  {isRTL ? 'أو أدخل يدوياً' : 'or enter manually'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{isRTL ? 'اسم البروكسي (اختياري)' : 'Proxy Name (optional)'}</Label>
               <Input
                 value={proxyName}
                 onChange={(e) => setProxyName(e.target.value)}
@@ -774,7 +1006,7 @@ export function AdvancedProxyView() {
             <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }}>
               {isRTL ? 'إلغاء' : 'Cancel'}
             </Button>
-            <Button variant="glow" onClick={handleAddProxy}>
+            <Button variant="glow" onClick={handleAddProxy} disabled={!proxyHost || !proxyPort}>
               <Plus className="w-4 h-4" />
               {isRTL ? 'إضافة' : 'Add'}
             </Button>
