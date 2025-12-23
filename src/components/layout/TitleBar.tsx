@@ -1,6 +1,6 @@
-import { Minus, Square, X, Globe } from 'lucide-react';
+import { Minus, Square, X } from 'lucide-react';
 import { isElectron, getElectronAPI } from '@/lib/electron';
-import { cn } from '@/lib/utils';
+import appLogo from '@/assets/app-logo.png';
 
 export function TitleBar() {
   const electronAPI = getElectronAPI();
@@ -13,8 +13,8 @@ export function TitleBar() {
     <div className="h-10 bg-card border-b border-border flex items-center justify-between select-none app-drag">
       {/* App Title */}
       <div className="flex items-center gap-2 px-4">
-        <Globe className="w-4 h-4 text-primary" />
-        <span className="text-sm font-semibold">Browser Manager</span>
+        <img src={appLogo} alt="Logo" className="w-5 h-5 rounded" />
+        <span className="text-sm font-semibold gradient-text">Profile Manager Pro</span>
       </div>
 
       {/* Window Controls */}

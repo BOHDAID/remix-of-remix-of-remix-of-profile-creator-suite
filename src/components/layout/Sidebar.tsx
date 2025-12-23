@@ -4,7 +4,6 @@ import {
   Settings, 
   Key,
   ChevronLeft,
-  Globe,
   Download,
   Shield,
   Database,
@@ -21,6 +20,7 @@ import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
+import appLogo from '@/assets/app-logo.png';
 
 export function Sidebar() {
   const { activeView, setActiveView, profiles, license, notifications } = useAppStore();
@@ -57,14 +57,14 @@ export function Sidebar() {
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center glow-effect">
-            <Globe className="w-5 h-5 text-primary" />
+          <div className="w-10 h-10 rounded-xl overflow-hidden glow-effect flex-shrink-0">
+            <img src={appLogo} alt="Profile Manager Pro" className="w-full h-full object-cover" />
           </div>
           {!collapsed && (
             <div className="animate-fade-in">
-              <h1 className="font-bold text-lg gradient-text">Browser Manager</h1>
+              <h1 className="font-bold text-lg gradient-text">Profile Manager Pro</h1>
               <p className="text-xs text-muted-foreground">
-                {isRTL ? 'إدارة المتصفحات' : 'Profile Manager'}
+                {isRTL ? 'إدارة المتصفحات الاحترافية' : 'Professional Browser Manager'}
               </p>
             </div>
           )}
