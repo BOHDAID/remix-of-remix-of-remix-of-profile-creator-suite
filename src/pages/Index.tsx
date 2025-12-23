@@ -21,6 +21,7 @@ import { ThermalControlView } from '@/components/thermal/ThermalControlView';
 import { BehavioralSimulationView } from '@/components/behavioral/BehavioralSimulationView';
 import { SessionManagerView } from '@/components/session/SessionManagerView';
 import { IdentityDNAView } from '@/components/dna/IdentityDNAView';
+import { QuickSessionsPanel } from '@/components/session/QuickSessionsPanel';
 import { useAppStore } from '@/stores/appStore';
 import { Helmet } from 'react-helmet-async';
 import { isElectron } from '@/lib/electron';
@@ -75,6 +76,14 @@ export default function Index() {
       
       <div className="flex flex-col min-h-screen bg-background">
         {isElectron() && <TitleBar />}
+        
+        {/* Quick Sessions Button - Always visible */}
+        {!isElectron() && (
+          <div className="fixed top-4 left-4 z-50">
+            <QuickSessionsPanel />
+          </div>
+        )}
+        
         <div className={`flex flex-1 overflow-hidden ${isRTL ? 'flex-row' : 'flex-row-reverse'}`}>
           <Sidebar />
           <main className="flex-1 overflow-auto scrollbar-thin">
