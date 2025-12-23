@@ -17,6 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { 
   Play, 
   Square, 
@@ -29,8 +35,21 @@ import {
   Loader2,
   Eye,
   Wifi,
+  WifiOff,
   Globe,
-  Fingerprint as FingerprintIcon
+  Fingerprint as FingerprintIcon,
+  Zap,
+  Clock,
+  Activity,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
+  Signal,
+  SignalHigh,
+  SignalLow,
+  ChevronRight,
+  Copy,
+  MoreHorizontal
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -43,6 +62,13 @@ import {
   FingerprintValidation,
   FingerprintError
 } from '@/types/profile-extended';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ProfileTableViewProps {
   profiles: Profile[];
@@ -56,12 +82,10 @@ function generateProfileHealth(profile: Profile): ProfileHealth {
   const hasProxy = !!profile.proxy?.host;
   const hasFingerprint = !!profile.fingerprint;
   
-  // Fingerprint validation
   const fpErrors: FingerprintError[] = [];
   let fpScore = 100;
   
   if (profile.fingerprint) {
-    // Check UA vs Platform consistency
     if (profile.userAgent?.includes('Windows') && profile.fingerprint.platform !== 'Win32') {
       fpErrors.push({
         field: 'Platform',
@@ -73,7 +97,6 @@ function generateProfileHealth(profile: Profile): ProfileHealth {
       fpScore -= 30;
     }
     
-    // Check GPU vs WebGL
     if (profile.fingerprint.gpu && profile.fingerprint.webglRenderer) {
       if (!profile.fingerprint.webglRenderer.includes(profile.fingerprint.gpu.split(' ')[0])) {
         fpErrors.push({
@@ -85,12 +108,6 @@ function generateProfileHealth(profile: Profile): ProfileHealth {
         });
         fpScore -= 15;
       }
-    }
-
-    // Check timezone
-    if (hasProxy && profile.fingerprint.timezone) {
-      // Simple check - in real app, would check against proxy IP location
-      fpScore -= 0; // Assume OK for demo
     }
   } else {
     fpErrors.push({
@@ -148,7 +165,6 @@ export function ProfileTableView({ profiles, onEdit, onDelete, searchQuery }: Pr
   const electronAPI = getElectronAPI();
   const licenseCheck = checkLicenseStatus(license, profiles.length);
 
-  // Get or generate health for a profile
   const getProfileHealth = (profile: Profile): ProfileHealth => {
     if (!profileHealthMap.has(profile.id)) {
       const health = generateProfileHealth(profile);
@@ -228,279 +244,437 @@ export function ProfileTableView({ profiles, onEdit, onDelete, searchQuery }: Pr
     p.notes.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getRiskColor = (risk: number) => {
-    if (risk <= 25) return 'text-success';
-    if (risk <= 50) return 'text-warning';
-    return 'text-destructive';
+  const getRiskGradient = (risk: number) => {
+    if (risk <= 25) return 'from-emerald-500/20 to-emerald-500/5';
+    if (risk <= 50) return 'from-amber-500/20 to-amber-500/5';
+    return 'from-red-500/20 to-red-500/5';
   };
 
-  const getStatusBadge = (status: 'safe' | 'warning' | 'danger') => {
+  const getRiskIcon = (status: 'safe' | 'warning' | 'danger') => {
     switch (status) {
       case 'safe':
-        return <Badge variant="outline" className="bg-success/10 text-success border-success/30">🟢 OK</Badge>;
+        return <ShieldCheck className="w-5 h-5 text-emerald-400" />;
       case 'warning':
-        return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">🟡 تحذير</Badge>;
+        return <ShieldAlert className="w-5 h-5 text-amber-400" />;
       case 'danger':
-        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">🔴 خطر</Badge>;
+        return <ShieldX className="w-5 h-5 text-red-400" />;
     }
   };
 
+  const getProxyIcon = (health: ProfileHealth) => {
+    if (!health.proxyStatus.enabled) {
+      return <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center">
+        <WifiOff className="w-5 h-5 text-muted-foreground/50" />
+      </div>;
+    }
+    if (health.proxyStatus.working) {
+      return <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/30 to-emerald-600/10 flex items-center justify-center border border-emerald-500/30 shadow-lg shadow-emerald-500/10">
+        <Signal className="w-5 h-5 text-emerald-400" />
+      </div>;
+    }
+    return <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500/30 to-red-600/10 flex items-center justify-center border border-red-500/30">
+      <SignalLow className="w-5 h-5 text-red-400" />
+    </div>;
+  };
+
   return (
-    <>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="w-12 text-center">#</TableHead>
-              <TableHead>اسم البروفايل</TableHead>
-              <TableHead className="text-center">Proxy</TableHead>
-              <TableHead className="text-center">VPN</TableHead>
-              <TableHead className="text-center">Fingerprint</TableHead>
-              <TableHead className="text-center">Risk</TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredProfiles.map((profile, index) => {
-              const health = getProfileHealth(profile);
-              const isLaunching = launchingId === profile.id;
-              
-              return (
-                <TableRow 
-                  key={profile.id}
-                  className={cn(
-                    "transition-colors",
-                    profile.status === 'running' && "bg-success/5"
-                  )}
-                >
-                  <TableCell className="text-center font-medium text-muted-foreground">
-                    {index + 1}
-                  </TableCell>
-                  
-                  <TableCell>
+    <TooltipProvider>
+      <>
+        <div className="space-y-3">
+          {filteredProfiles.map((profile, index) => {
+            const health = getProfileHealth(profile);
+            const isLaunching = launchingId === profile.id;
+            const isRunning = profile.status === 'running';
+            
+            return (
+              <div
+                key={profile.id}
+                className={cn(
+                  "group relative rounded-2xl border transition-all duration-300 overflow-hidden",
+                  "bg-gradient-to-r from-card via-card to-card/80",
+                  "hover:shadow-xl hover:shadow-primary/5 hover:border-primary/30",
+                  isRunning && "ring-2 ring-emerald-500/50 border-emerald-500/30 shadow-lg shadow-emerald-500/10"
+                )}
+              >
+                {/* Animated gradient background for running profiles */}
+                {isRunning && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-emerald-500/5 animate-pulse" />
+                )}
+                
+                <div className="relative p-4">
+                  <div className="flex items-center gap-4">
+                    {/* Profile Avatar & Number */}
                     <div className="flex items-center gap-3">
-                      {profile.icon ? (
-                        <span className="text-xl">{profile.icon}</span>
-                      ) : (
-                        <div 
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-                          style={{ backgroundColor: profile.color || 'hsl(var(--primary) / 0.2)' }}
-                        >
-                          {profile.name.charAt(0)}
+                      <div className="relative">
+                        <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-muted text-[10px] font-bold flex items-center justify-center border border-border">
+                          {index + 1}
+                        </span>
+                        {profile.icon ? (
+                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl border border-primary/20 shadow-lg">
+                            {profile.icon}
+                          </div>
+                        ) : (
+                          <div 
+                            className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold border shadow-lg"
+                            style={{ 
+                              backgroundColor: profile.color || 'hsl(var(--primary) / 0.15)',
+                              borderColor: profile.color ? `${profile.color}50` : 'hsl(var(--primary) / 0.3)'
+                            }}
+                          >
+                            {profile.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        {isRunning && (
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
+                        )}
+                      </div>
+                      
+                      <div className="min-w-[180px]">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-base">{profile.name}</h3>
+                          {isRunning && (
+                            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] px-1.5 py-0">
+                              <Activity className="w-3 h-3 mr-1" />
+                              نشط
+                            </Badge>
+                          )}
                         </div>
-                      )}
-                      <div>
-                        <p className="font-medium">{profile.name}</p>
-                        {profile.notes && (
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        {profile.notes ? (
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px] mt-0.5">
                             {profile.notes}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/50 mt-0.5">
+                            بدون ملاحظات
                           </p>
                         )}
                       </div>
                     </div>
-                  </TableCell>
-                  
-                  <TableCell className="text-center">
-                    {health.proxyStatus.enabled ? (
-                      health.proxyStatus.working ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <Check className="w-5 h-5 text-success" />
-                          <span className="text-xs text-muted-foreground">
-                            {health.proxyStatus.latency}ms
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1">
-                          <AlertTriangle className="w-5 h-5 text-warning" />
-                          <span className="text-xs text-warning">فشل</span>
-                        </div>
-                      )
-                    ) : (
-                      <X className="w-5 h-5 text-muted-foreground" />
-                    )}
-                  </TableCell>
-                  
-                  <TableCell className="text-center">
-                    {health.vpnStatus.enabled ? (
-                      health.vpnStatus.connected ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <Wifi className="w-5 h-5 text-success" />
-                          <span className="text-xs text-muted-foreground">
-                            {health.vpnStatus.country}
-                          </span>
-                        </div>
-                      ) : (
-                        <AlertTriangle className="w-5 h-5 text-warning" />
-                      )
-                    ) : (
-                      <X className="w-5 h-5 text-muted-foreground" />
-                    )}
-                  </TableCell>
-                  
-                  <TableCell className="text-center">
-                    {health.fingerprintValidation.isValid ? (
-                      <Badge variant="outline" className="bg-success/10 text-success border-success/30">
-                        ✅ Valid
-                      </Badge>
-                    ) : (
-                      <div className="flex flex-col items-center gap-1">
-                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
-                          ❌ Invalid
-                        </Badge>
+
+                    {/* Status Cards */}
+                    <div className="flex-1 flex items-center justify-center gap-3">
+                      {/* Proxy Status */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex flex-col items-center gap-1 min-w-[80px]">
+                            {getProxyIcon(health)}
+                            <span className="text-[10px] text-muted-foreground font-medium">
+                              {health.proxyStatus.enabled 
+                                ? health.proxyStatus.working 
+                                  ? `${health.proxyStatus.latency}ms` 
+                                  : 'فشل'
+                                : 'بدون'
+                              }
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>البروكسي: {health.proxyStatus.enabled ? (health.proxyStatus.working ? 'يعمل' : 'لا يعمل') : 'غير مفعل'}</p>
+                          {health.proxyStatus.ip && <p className="text-xs text-muted-foreground">IP: {health.proxyStatus.ip}</p>}
+                        </TooltipContent>
+                      </Tooltip>
+
+                      {/* VPN Status */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex flex-col items-center gap-1 min-w-[80px]">
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center border",
+                              health.vpnStatus.enabled 
+                                ? health.vpnStatus.connected 
+                                  ? "bg-gradient-to-br from-blue-500/30 to-blue-600/10 border-blue-500/30"
+                                  : "bg-gradient-to-br from-amber-500/30 to-amber-600/10 border-amber-500/30"
+                                : "bg-muted/50 border-transparent"
+                            )}>
+                              <Wifi className={cn(
+                                "w-5 h-5",
+                                health.vpnStatus.enabled 
+                                  ? health.vpnStatus.connected ? "text-blue-400" : "text-amber-400"
+                                  : "text-muted-foreground/50"
+                              )} />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground font-medium">
+                              {health.vpnStatus.enabled ? (health.vpnStatus.connected ? health.vpnStatus.country || 'متصل' : 'منقطع') : 'بدون'}
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>VPN: {health.vpnStatus.enabled ? (health.vpnStatus.connected ? 'متصل' : 'غير متصل') : 'غير مفعل'}</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      {/* Fingerprint Status */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div 
+                            className="flex flex-col items-center gap-1 min-w-[80px] cursor-pointer"
+                            onClick={() => !health.fingerprintValidation.isValid && setErrorDialogProfile(profile)}
+                          >
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center border",
+                              health.fingerprintValidation.isValid 
+                                ? "bg-gradient-to-br from-violet-500/30 to-violet-600/10 border-violet-500/30 shadow-lg shadow-violet-500/10"
+                                : "bg-gradient-to-br from-red-500/30 to-red-600/10 border-red-500/30"
+                            )}>
+                              <FingerprintIcon className={cn(
+                                "w-5 h-5",
+                                health.fingerprintValidation.isValid ? "text-violet-400" : "text-red-400"
+                              )} />
+                            </div>
+                            <span className={cn(
+                              "text-[10px] font-bold",
+                              health.fingerprintValidation.isValid ? "text-violet-400" : "text-red-400"
+                            )}>
+                              {health.fingerprintValidation.score}%
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>البصمة: {health.fingerprintValidation.isValid ? 'صالحة' : 'غير صالحة'}</p>
+                          {health.fingerprintValidation.errors.length > 0 && (
+                            <p className="text-xs text-red-400">{health.fingerprintValidation.errors.length} أخطاء</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+
+                      {/* Risk Score */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex flex-col items-center gap-1 min-w-[100px]">
+                            <div className={cn(
+                              "w-16 h-10 rounded-xl flex items-center justify-center gap-1.5 border",
+                              `bg-gradient-to-br ${getRiskGradient(health.riskScore.overall)}`,
+                              health.riskScore.status === 'safe' && "border-emerald-500/30",
+                              health.riskScore.status === 'warning' && "border-amber-500/30",
+                              health.riskScore.status === 'danger' && "border-red-500/30"
+                            )}>
+                              {getRiskIcon(health.riskScore.status)}
+                              <span className={cn(
+                                "font-bold text-lg",
+                                health.riskScore.status === 'safe' && "text-emerald-400",
+                                health.riskScore.status === 'warning' && "text-amber-400",
+                                health.riskScore.status === 'danger' && "text-red-400"
+                              )}>
+                                {health.riskScore.overall}
+                              </span>
+                            </div>
+                            <span className={cn(
+                              "text-[10px] font-semibold",
+                              health.riskScore.status === 'safe' && "text-emerald-400",
+                              health.riskScore.status === 'warning' && "text-amber-400",
+                              health.riskScore.status === 'danger' && "text-red-400"
+                            )}>
+                              {health.riskScore.status === 'safe' && 'آمن'}
+                              {health.riskScore.status === 'warning' && 'تحذير'}
+                              {health.riskScore.status === 'danger' && 'خطر'}
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>درجة المخاطرة: {health.riskScore.overall}%</p>
+                          {health.riskScore.factors.map((f, i) => (
+                            <p key={i} className="text-xs text-muted-foreground">{f.name}: {f.description}</p>
+                          ))}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      {/* Primary Action: Launch/Stop */}
+                      {isRunning ? (
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-xs text-primary"
-                          onClick={() => setErrorDialogProfile(profile)}
-                        >
-                          Show Error
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                  
-                  <TableCell className="text-center">
-                    <span className={cn("font-bold text-lg", getRiskColor(health.riskScore.overall))}>
-                      {health.riskScore.overall}%
-                    </span>
-                  </TableCell>
-                  
-                  <TableCell className="text-center">
-                    {getStatusBadge(health.riskScore.status)}
-                  </TableCell>
-                  
-                  <TableCell>
-                    <div className="flex items-center justify-center gap-1">
-                      {profile.status === 'running' ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
                           onClick={() => handleStop(profile)}
-                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          className="h-11 px-5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/25 border-0"
                         >
-                          <Square className="w-4 h-4" />
+                          <Square className="w-4 h-4 mr-2" />
+                          إيقاف
                         </Button>
                       ) : (
                         <Button
-                          variant="ghost"
-                          size="icon"
                           onClick={() => handleLaunch(profile)}
                           disabled={isLaunching || !licenseCheck.canRun}
-                          className="h-8 w-8 text-success hover:text-success hover:bg-success/10"
+                          className="h-11 px-5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/25 border-0 disabled:opacity-50"
                         >
                           {isLaunching ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           ) : (
-                            <Play className="w-4 h-4" />
+                            <Play className="w-4 h-4 mr-2" />
                           )}
+                          تشغيل
                         </Button>
                       )}
-                      
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setInspectorProfile(profile)}
-                        className="h-8 w-8"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(profile)}
-                        className="h-8 w-8"
-                      >
-                        <Settings2 className="w-4 h-4" />
-                      </Button>
-                      
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(profile)}
-                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
 
-        {filteredProfiles.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            {searchQuery ? 'لا توجد نتائج' : 'لا توجد بروفايلات'}
-          </div>
-        )}
-      </div>
+                      {/* Secondary Actions */}
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setInspectorProfile(profile)}
+                              className="h-9 w-9 rounded-xl hover:bg-primary/10"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>فحص البروفايل</TooltipContent>
+                        </Tooltip>
+                        
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => onEdit(profile)}
+                              className="h-9 w-9 rounded-xl hover:bg-primary/10"
+                            >
+                              <Settings2 className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>تعديل</TooltipContent>
+                        </Tooltip>
 
-      {/* Profile Inspector Dialog */}
-      <Dialog open={!!inspectorProfile} onOpenChange={() => setInspectorProfile(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FingerprintIcon className="w-5 h-5 text-primary" />
-              فحص البروفايل: {inspectorProfile?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {inspectorProfile && (
-            <ProfileInspector 
-              profile={inspectorProfile} 
-              health={getProfileHealth(inspectorProfile)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Error Details Dialog */}
-      <Dialog open={!!errorDialogProfile} onOpenChange={() => setErrorDialogProfile(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="w-5 h-5" />
-              أخطاء البصمة: {errorDialogProfile?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {errorDialogProfile && (
-            <div className="space-y-4">
-              {getProfileHealth(errorDialogProfile).fingerprintValidation.errors.map((error, i) => (
-                <div key={i} className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={error.severity === 'critical' ? 'destructive' : 'outline'}>
-                      {error.severity === 'critical' ? 'حرج' : 'تحذير'}
-                    </Badge>
-                    <span className="font-medium">{error.field}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">المتوقع: </span>
-                      <span className="text-success">{error.expected}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 rounded-xl hover:bg-primary/10"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => {
+                              navigator.clipboard.writeText(profile.id);
+                              toast.success('تم نسخ ID');
+                            }}>
+                              <Copy className="w-4 h-4 ml-2" />
+                              نسخ ID
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setInspectorProfile(profile)}>
+                              <Eye className="w-4 h-4 ml-2" />
+                              فحص البصمة
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={() => onDelete(profile)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4 ml-2" />
+                              حذف البروفايل
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">الفعلي: </span>
-                      <span className="text-destructive">{error.actual}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm bg-primary/10 p-2 rounded">
-                    <Shield className="w-4 h-4 text-primary" />
-                    <span className="text-primary font-medium">الحل: {error.fix}</span>
                   </div>
                 </div>
-              ))}
-              
-              {getProfileHealth(errorDialogProfile).fingerprintValidation.errors.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  لا توجد أخطاء
-                </p>
-              )}
+              </div>
+            );
+          })}
+        </div>
+
+        {filteredProfiles.length === 0 && (
+          <div className="text-center py-16">
+            <div className="w-20 h-20 rounded-3xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <Globe className="w-10 h-10 text-muted-foreground/50" />
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+            <p className="text-muted-foreground text-lg">
+              {searchQuery ? 'لا توجد نتائج' : 'لا توجد بروفايلات'}
+            </p>
+            <p className="text-muted-foreground/50 text-sm mt-1">
+              {!searchQuery && 'أنشئ بروفايل جديد للبدء'}
+            </p>
+          </div>
+        )}
+
+        {/* Profile Inspector Dialog */}
+        <Dialog open={!!inspectorProfile} onOpenChange={() => setInspectorProfile(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FingerprintIcon className="w-5 h-5 text-primary" />
+                فحص البروفايل: {inspectorProfile?.name}
+              </DialogTitle>
+            </DialogHeader>
+            {inspectorProfile && (
+              <ProfileInspector 
+                profile={inspectorProfile} 
+                health={getProfileHealth(inspectorProfile)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Error Details Dialog */}
+        <Dialog open={!!errorDialogProfile} onOpenChange={() => setErrorDialogProfile(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="w-5 h-5" />
+                أخطاء البصمة: {errorDialogProfile?.name}
+              </DialogTitle>
+            </DialogHeader>
+            {errorDialogProfile && (
+              <div className="space-y-4 mt-4">
+                {getProfileHealth(errorDialogProfile).fingerprintValidation.errors.map((error, i) => (
+                  <div 
+                    key={i} 
+                    className={cn(
+                      "p-4 rounded-xl border",
+                      error.severity === 'critical' 
+                        ? "bg-red-500/10 border-red-500/30" 
+                        : "bg-amber-500/10 border-amber-500/30"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className={cn(
+                        "w-4 h-4",
+                        error.severity === 'critical' ? "text-red-400" : "text-amber-400"
+                      )} />
+                      <span className="font-semibold">{error.field}</span>
+                      <Badge variant="outline" className={cn(
+                        "text-[10px]",
+                        error.severity === 'critical' 
+                          ? "bg-red-500/20 text-red-400 border-red-500/30" 
+                          : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                      )}>
+                        {error.severity === 'critical' ? 'حرج' : 'تحذير'}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+                      <div>
+                        <span className="text-muted-foreground">المتوقع:</span>
+                        <p className="font-mono text-xs bg-background/50 px-2 py-1 rounded mt-1">{error.expected}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">الفعلي:</span>
+                        <p className="font-mono text-xs bg-background/50 px-2 py-1 rounded mt-1">{error.actual}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <span className="text-primary">الحل:</span> {error.fix}
+                    </p>
+                  </div>
+                ))}
+                
+                <Button 
+                  className="w-full" 
+                  onClick={() => {
+                    setErrorDialogProfile(null);
+                    onEdit(errorDialogProfile);
+                  }}
+                >
+                  <Settings2 className="w-4 h-4 mr-2" />
+                  تعديل البروفايل
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </>
+    </TooltipProvider>
   );
 }
