@@ -904,46 +904,138 @@ foreach ($win in $windows) {
   }
 });
 
-// Minimize all profile windows (using taskkill alternative - minimize main window for demo)
+// Minimize only BHD profile windows (not all Chrome windows)
 ipcMain.handle('minimize-all-profiles', async () => {
-  // For Chrome windows, we need platform-specific solutions
-  // On Windows, we can use PowerShell to minimize windows
-  if (process.platform === 'win32') {
-    const { exec } = require('child_process');
-    
-    return new Promise((resolve) => {
-      // PowerShell command to minimize all Chrome windows
-      const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }'; Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { [Win32]::ShowWindow($_.MainWindowHandle, 6) }"`;
-      
-      exec(cmd, (error) => {
-        if (error) {
-          console.log('Minimize error:', error);
-        }
-        resolve();
-      });
-    });
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'هذه الميزة متاحة فقط على Windows' };
   }
-  return Promise.resolve();
+
+  const { exec } = require('child_process');
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+
+  // Get PIDs of only our running profiles
+  const pids = [];
+  for (const [id, browser] of runningProfiles.entries()) {
+    if (browser && browser.pid) {
+      pids.push(browser.pid);
+    }
+  }
+
+  if (pids.length === 0) {
+    return { success: false, error: 'لا توجد بروفايلات تعمل' };
+  }
+
+  const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+}
+"@
+
+$pids = @(${pids.join(',')})
+$null = [IntPtr]::Zero
+$hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
+
+while ($hwnd -ne [IntPtr]::Zero) {
+    $processId = 0
+    [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
+    if ($pids -contains $processId) {
+        [Win32]::ShowWindow($hwnd, 6) | Out-Null
+    }
+    $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
+}
+`;
+
+  const tempScriptPath = path.join(os.tmpdir(), 'minimize-bhd-windows.ps1');
+  fs.writeFileSync(tempScriptPath, psScript, 'utf8');
+
+  return new Promise((resolve) => {
+    exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error) => {
+      try { fs.unlinkSync(tempScriptPath); } catch (e) {}
+      if (error) {
+        console.log('Minimize error:', error);
+        resolve({ success: false, error: error.message });
+      } else {
+        resolve({ success: true });
+      }
+    });
+  });
 });
 
-// Restore all profile windows
+// Restore only BHD profile windows
 ipcMain.handle('restore-all-profiles', async () => {
-  if (process.platform === 'win32') {
-    const { exec } = require('child_process');
-    
-    return new Promise((resolve) => {
-      // PowerShell command to restore all Chrome windows
-      const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }'; Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { [Win32]::ShowWindow($_.MainWindowHandle, 9) }"`;
-      
-      exec(cmd, (error) => {
-        if (error) {
-          console.log('Restore error:', error);
-        }
-        resolve();
-      });
-    });
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'هذه الميزة متاحة فقط على Windows' };
   }
-  return Promise.resolve();
+
+  const { exec } = require('child_process');
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+
+  // Get PIDs of only our running profiles
+  const pids = [];
+  for (const [id, browser] of runningProfiles.entries()) {
+    if (browser && browser.pid) {
+      pids.push(browser.pid);
+    }
+  }
+
+  if (pids.length === 0) {
+    return { success: false, error: 'لا توجد بروفايلات تعمل' };
+  }
+
+  const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+}
+"@
+
+$pids = @(${pids.join(',')})
+$null = [IntPtr]::Zero
+$hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
+
+while ($hwnd -ne [IntPtr]::Zero) {
+    $processId = 0
+    [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
+    if ($pids -contains $processId) {
+        [Win32]::ShowWindow($hwnd, 9) | Out-Null
+    }
+    $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
+}
+`;
+
+  const tempScriptPath = path.join(os.tmpdir(), 'restore-bhd-windows.ps1');
+  fs.writeFileSync(tempScriptPath, psScript, 'utf8');
+
+  return new Promise((resolve) => {
+    exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error) => {
+      try { fs.unlinkSync(tempScriptPath); } catch (e) {}
+      if (error) {
+        console.log('Restore error:', error);
+        resolve({ success: false, error: error.message });
+      } else {
+        resolve({ success: true });
+      }
+    });
+  });
 });
 
 // Focus a specific profile window
