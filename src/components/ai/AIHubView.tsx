@@ -82,8 +82,8 @@ interface AIModuleCard {
 
 export function AIHubView() {
   const { isRTL } = useTranslation();
-  const { profiles } = useAppStore();
-  const proxies = profiles.filter(p => p.proxy).map(p => ({ id: p.id, name: typeof p.proxy === 'string' ? p.proxy : (p.proxy?.host || 'Unknown') }));
+  const { profiles = [] } = useAppStore();
+  const proxies = (profiles || []).filter(p => p.proxy).map(p => ({ id: p.id, name: typeof p.proxy === 'string' ? p.proxy : (p.proxy?.host || 'Unknown') }));
   const [activeTab, setActiveTab] = useState('overview');
   
   // Generated fingerprints history - PERSISTENT
