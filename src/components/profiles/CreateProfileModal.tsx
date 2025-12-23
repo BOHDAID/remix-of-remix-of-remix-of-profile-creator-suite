@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Profile, ProxySettings, FingerprintSettings } from '@/types';
+import { Profile, ProxySettings, FingerprintSettings, AntiTrackingSettings } from '@/types';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import { 
   Globe, Shield, Puzzle, FileText, AlertTriangle, Fingerprint, 
   CheckCircle2, XCircle, Loader2, RefreshCw, Zap, Lock, Eye,
-  MousePointer, Key, Camera, Bot
+  MousePointer, Key, Camera, Bot, ShieldCheck, Monitor, Mic, Type
 } from 'lucide-react';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
 import { FingerprintTab } from './FingerprintTab';
@@ -60,6 +60,20 @@ const BUILT_IN_EXTENSIONS = [
   },
 ];
 
+// الإعدادات الافتراضية لمكافحة التتبع
+const defaultAntiTracking: AntiTrackingSettings = {
+  canvasFingerprint: true,
+  webglFingerprint: true,
+  audioFingerprint: true,
+  fontFingerprint: true,
+  mouseMovementSimulation: true,
+  timezoneSpoof: false,
+  languageSpoof: false,
+  screenResolutionSpoof: false,
+  webrtcLeakPrevention: true,
+  doNotTrack: true,
+};
+
 interface CreateProfileModalProps {
   open: boolean;
   onClose: () => void;
@@ -86,6 +100,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
   const [notes, setNotes] = useState('');
   const [fingerprint, setFingerprint] = useState<FingerprintSettings | undefined>(undefined);
   const [autoLoadExtensions, setAutoLoadExtensions] = useState(true);
+  const [antiTracking, setAntiTracking] = useState<AntiTrackingSettings>(defaultAntiTracking);
   
   // حالات البروكسي
   const [proxyTesting, setProxyTesting] = useState(false);
@@ -112,6 +127,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
       setNotes(editProfile.notes);
       setFingerprint(editProfile.fingerprint);
       setAutoLoadExtensions(editProfile.autoLoadExtensions ?? true);
+      setAntiTracking(editProfile.antiTracking || defaultAntiTracking);
     } else {
       resetForm();
     }
@@ -135,6 +151,11 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
     setProxyStatus('untested');
     setProxyLatency(null);
     setProxyLocation(null);
+    setAntiTracking(defaultAntiTracking);
+  };
+
+  const updateAntiTracking = (key: keyof AntiTrackingSettings, value: boolean) => {
+    setAntiTracking(prev => ({ ...prev, [key]: value }));
   };
 
   const handleTestProxy = async () => {
@@ -223,6 +244,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         notes,
         fingerprint,
         autoLoadExtensions,
+        antiTracking,
       });
       toast.success('تم تحديث البروفايل بنجاح');
     } else {
@@ -237,6 +259,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
         notes,
         fingerprint,
         autoLoadExtensions,
+        antiTracking,
       };
       addProfile(newProfile);
       toast.success('تم إنشاء البروفايل بنجاح');
@@ -624,10 +647,11 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
             <div className="p-4 rounded-lg bg-muted/30 border border-border space-y-4">
               <h4 className="font-medium text-sm flex items-center gap-2">
                 <Lock className="w-4 h-4 text-primary" />
-                خيارات الخصوصية
+                خيارات الخصوصية ومكافحة التتبع
               </h4>
 
               <div className="space-y-3">
+                {/* WebRTC Leak Prevention */}
                 <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
                     <Eye className="w-4 h-4 text-muted-foreground" />
@@ -636,9 +660,13 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
                       <p className="text-xs text-muted-foreground">منع تسريب IP الحقيقي عبر WebRTC</p>
                     </div>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={antiTracking.webrtcLeakPrevention}
+                    onCheckedChange={(checked) => updateAntiTracking('webrtcLeakPrevention', checked)}
+                  />
                 </div>
 
+                {/* Mouse Movement Simulation */}
                 <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
                     <MousePointer className="w-4 h-4 text-muted-foreground" />
@@ -647,7 +675,85 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
                       <p className="text-xs text-muted-foreground">محاكاة سلوك المستخدم الطبيعي</p>
                     </div>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={antiTracking.mouseMovementSimulation}
+                    onCheckedChange={(checked) => updateAntiTracking('mouseMovementSimulation', checked)}
+                  />
+                </div>
+
+                {/* Canvas Fingerprint */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Monitor className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">تزوير بصمة Canvas</p>
+                      <p className="text-xs text-muted-foreground">تغيير بصمة Canvas لمنع التتبع</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={antiTracking.canvasFingerprint}
+                    onCheckedChange={(checked) => updateAntiTracking('canvasFingerprint', checked)}
+                  />
+                </div>
+
+                {/* WebGL Fingerprint */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">تزوير بصمة WebGL</p>
+                      <p className="text-xs text-muted-foreground">إخفاء معلومات كرت الشاشة الحقيقية</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={antiTracking.webglFingerprint}
+                    onCheckedChange={(checked) => updateAntiTracking('webglFingerprint', checked)}
+                  />
+                </div>
+
+                {/* Audio Fingerprint */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Mic className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">تزوير بصمة الصوت</p>
+                      <p className="text-xs text-muted-foreground">منع التتبع عبر AudioContext</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={antiTracking.audioFingerprint}
+                    onCheckedChange={(checked) => updateAntiTracking('audioFingerprint', checked)}
+                  />
+                </div>
+
+                {/* Font Fingerprint */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Type className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">تزوير بصمة الخطوط</p>
+                      <p className="text-xs text-muted-foreground">إخفاء قائمة الخطوط المثبتة</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={antiTracking.fontFingerprint}
+                    onCheckedChange={(checked) => updateAntiTracking('fontFingerprint', checked)}
+                  />
+                </div>
+
+                {/* Do Not Track */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Shield className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">إرسال Do Not Track</p>
+                      <p className="text-xs text-muted-foreground">طلب عدم التتبع من المواقع</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={antiTracking.doNotTrack}
+                    onCheckedChange={(checked) => updateAntiTracking('doNotTrack', checked)}
+                  />
                 </div>
               </div>
             </div>
@@ -663,6 +769,7 @@ export function CreateProfileModal({ open, onClose, editProfile }: CreateProfile
                 <span>الملحقات: {selectedExtensions.length + selectedBuiltInExtensions.length}</span>
                 <span>البصمة: {fingerprint ? 'مخصصة' : 'افتراضية'}</span>
                 <span>تحميل تلقائي: {autoLoadExtensions ? 'نعم' : 'لا'}</span>
+                <span>مكافحة التتبع: {Object.values(antiTracking).filter(Boolean).length} خيارات مفعلة</span>
               </div>
             </div>
           </TabsContent>

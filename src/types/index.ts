@@ -126,6 +126,8 @@ export interface AntiTrackingSettings {
   timezoneSpoof: boolean;
   languageSpoof: boolean;
   screenResolutionSpoof: boolean;
+  webrtcLeakPrevention: boolean;
+  doNotTrack: boolean;
 }
 
 export interface FingerprintSettings {
