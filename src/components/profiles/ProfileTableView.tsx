@@ -298,7 +298,7 @@ export function ProfileTableView({ profiles, onEdit, onDelete, searchQuery }: Pr
               >
                 {/* Animated gradient background for running profiles */}
                 {isRunning && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-emerald-500/5 animate-pulse" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-emerald-500/5 animate-pulse" />
                 )}
                 
                 <div className="relative p-4">

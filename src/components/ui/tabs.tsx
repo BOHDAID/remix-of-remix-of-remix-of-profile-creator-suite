@@ -1,23 +1,93 @@
 import * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const Tabs = TabsPrimitive.Root;
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
-      className,
-    )}
-    {...props}
-  />
-));
+>(({ className, ...props }, forwardedRef) => {
+  const listRef = React.useRef<React.ElementRef<typeof TabsPrimitive.List> | null>(null);
+  const [canScroll, setCanScroll] = React.useState(false);
+
+  React.useImperativeHandle(forwardedRef, () => listRef.current as React.ElementRef<typeof TabsPrimitive.List>);
+
+  React.useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const update = () => {
+      setCanScroll(el.scrollWidth > el.clientWidth + 2);
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  const scroll = (dir: "left" | "right") => {
+    const el = listRef.current;
+    if (!el) return;
+    const delta = dir === "left" ? -260 : 260;
+    el.scrollBy({ left: delta, behavior: "smooth" });
+  };
+
+  return (
+    <div className="relative">
+      <TabsPrimitive.List
+        ref={listRef}
+        className={cn(
+          "relative flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground",
+          "gap-1 overflow-x-auto whitespace-nowrap",
+          "[scrollbar-width:thin]",
+          className,
+        )}
+        {...props}
+      />
+
+      {canScroll && (
+        <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => scroll("left")}
+            className={cn(
+              "pointer-events-auto h-8 w-8 rounded-full border border-border",
+              "bg-background/80 backdrop-blur shadow-sm",
+            )}
+            aria-label="تمرير يسار"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => scroll("right")}
+            className={cn(
+              "pointer-events-auto h-8 w-8 rounded-full border border-border",
+              "bg-background/80 backdrop-blur shadow-sm",
+            )}
+            aria-label="تمرير يمين"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+});
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 const TabsTrigger = React.forwardRef<
@@ -51,3 +121,4 @@ const TabsContent = React.forwardRef<
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
 export { Tabs, TabsList, TabsTrigger, TabsContent };
+
