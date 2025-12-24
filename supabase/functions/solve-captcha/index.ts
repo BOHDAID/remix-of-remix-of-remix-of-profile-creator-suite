@@ -57,24 +57,54 @@ serve(async (req) => {
     let userPrompt = '';
 
     if (captchaType === 'recaptcha-image' || captchaType === 'image-selection') {
-      // For reCAPTCHA image selection challenges
-      systemPrompt = `You are an expert at analyzing images for CAPTCHA challenges. You will be shown a grid of images (usually 3x3 or 4x4) and need to identify which cells contain the target object.
+      // For reCAPTCHA image selection challenges - comprehensive analysis
+      systemPrompt = `You are an expert at solving reCAPTCHA image challenges. You will analyze a screenshot of a reCAPTCHA challenge.
 
-CRITICAL RULES:
-- Return ONLY comma-separated numbers representing grid positions (1-9 for 3x3, 1-16 for 4x4)
-- Grid numbering: 1=top-left, then left-to-right, top-to-bottom
-- For a 3x3 grid:
-  [1][2][3]
-  [4][5][6]
-  [7][8][9]
-- If no cells match, return "none"
-- Do NOT include any explanation, just the numbers
-- Be thorough - look at each cell carefully
-- Include ALL cells that contain ANY part of the target object${learnedHint}`;
+CRITICAL INSTRUCTIONS:
+1. FIRST: Read the instruction text at the TOP of the image. It will say something like "Select all images with [TARGET]" or "Select all squares with [TARGET]"
+2. THEN: Look at the image grid below the instructions (usually 3x3 = 9 cells, sometimes 4x4 = 16 cells)
+3. IDENTIFY: Which cells contain the target object mentioned in the instructions
 
-      userPrompt = prompt 
-        ? `Look at this image grid. Which cells contain: ${prompt}? Return only the position numbers.`
-        : 'Analyze this CAPTCHA grid. Identify which cells contain the target object shown in the challenge. Return position numbers only.';
+GRID NUMBERING (left-to-right, top-to-bottom):
+For 3x3:
+[1][2][3]
+[4][5][6]
+[7][8][9]
+
+For 4x4:
+[1][2][3][4]
+[5][6][7][8]
+[9][10][11][12]
+[13][14][15][16]
+
+COMMON TARGETS:
+- Traffic lights (tall poles with red/yellow/green lights)
+- Crosswalks (white striped pedestrian crossings on roads)
+- Bicycles/bikes
+- Buses (large public transport vehicles)
+- Cars/vehicles
+- Motorcycles
+- Fire hydrants (red or yellow street hydrants)
+- Stairs/staircases
+- Bridges
+- Boats
+- Palm trees
+- Mountains
+- Chimneys
+- Parking meters
+- Taxis (yellow cars)
+- Tractors
+
+RESPONSE FORMAT:
+- Return ONLY comma-separated numbers (e.g., "1,4,7" or "2,5,6,8")
+- If NO cells contain the target, return "none"
+- Do NOT include any explanation or text
+- Include cells where even PART of the target is visible
+- When uncertain, include the cell${learnedHint}`;
+
+      userPrompt = prompt && prompt.length > 50 
+        ? prompt  // Use comprehensive prompt from extension
+        : `Analyze this reCAPTCHA challenge screenshot. Read the instruction at the top to find what object to select, then return the grid cell numbers that contain that object.`;
 
     } else if (captchaType === 'text') {
       systemPrompt = `You are a CAPTCHA text reader. Your task is to read distorted text from CAPTCHA images.
@@ -92,8 +122,8 @@ RULES:
       // Generic image analysis
       systemPrompt = `You are analyzing a CAPTCHA image. Determine what type it is and solve it.
 
+For reCAPTCHA: First read the instruction text, then return comma-separated grid position numbers
 For text: Return only the text
-For image selection: Return comma-separated grid position numbers (1-9 or 1-16)
 For math: Return the numeric answer${learnedHint}`;
 
       userPrompt = prompt || 'Solve this CAPTCHA. Return only the answer.';

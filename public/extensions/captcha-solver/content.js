@@ -550,6 +550,26 @@
   }
   
   // Solve reCAPTCHA image challenge using AI
+  // Common reCAPTCHA challenge targets
+  const RECAPTCHA_TARGETS = [
+    'traffic lights', 'traffic light',
+    'crosswalks', 'crosswalk', 'crossings',
+    'bicycles', 'bicycle', 'bikes',
+    'buses', 'bus',
+    'cars', 'car', 'vehicles',
+    'motorcycles', 'motorcycle',
+    'fire hydrants', 'fire hydrant', 'hydrants',
+    'stairs', 'staircase',
+    'bridges', 'bridge',
+    'boats', 'boat',
+    'palm trees', 'palm tree',
+    'mountains', 'mountain',
+    'chimneys', 'chimney',
+    'parking meters', 'parking meter',
+    'taxis', 'taxi',
+    'tractors', 'tractor'
+  ];
+  
   async function solveRecaptchaImageChallenge() {
     console.log('[AI Solver] Solving reCAPTCHA image challenge...');
     showStatus('جاري تحليل تحدي الصور...', 'processing');
@@ -578,85 +598,110 @@
           }
         }, async (response) => {
           if (response && response.imageBase64) {
-            console.log('[AI Solver] Got screenshot, cropping to grid area...');
+            console.log('[AI Solver] Got screenshot, analyzing full challenge...');
             
-            // Crop the screenshot to only the image grid (remove header ~120px and footer ~60px)
-            const croppedImage = await cropImageToGrid(response.imageBase64, iframeRect);
+            // Send full screenshot to AI with comprehensive prompt
+            // The AI will analyze the entire challenge including instructions
+            const comprehensivePrompt = `
+This is a reCAPTCHA image challenge screenshot. 
+1. First, read the instruction text at the top (it says "Select all images with [target]" or similar)
+2. Then identify which grid cells (numbered 1-9 for 3x3, or 1-16 for 4x4) contain the target object
+3. Return ONLY the cell numbers separated by commas
+
+Common targets include: ${RECAPTCHA_TARGETS.slice(0, 10).join(', ')}
+
+Grid numbering:
+[1][2][3]
+[4][5][6]
+[7][8][9]
+
+Return ONLY numbers like: 1,4,7 or "none" if no cells match.`;
             
-            // Extract the challenge prompt from the page
-            let prompt = '';
-            try {
-              // Try to find the challenge text in any visible elements
-              const challengeTexts = document.body.querySelectorAll('*');
-              for (const el of challengeTexts) {
-                const text = el.textContent?.trim() || '';
-                if (text.includes('Select all') || text.includes('اختر') || 
-                    text.includes('squares with') || text.includes('images with') ||
-                    text.includes('Click verify') || text.includes('التحقق')) {
-                  // Extract the target object
-                  const match = text.match(/with\s+(\w+)/i) || text.match(/all\s+(\w+)/i) ||
-                                text.match(/containing\s+(\w+)/i) || text.match(/showing\s+(\w+)/i);
-                  if (match) {
-                    prompt = match[1];
-                  } else if (text.length < 100) {
-                    prompt = text;
-                  }
-                  break;
-                }
-              }
-            } catch (e) {}
+            // Call AI to solve with full screenshot
+            const solution = await callAISolver(response.imageBase64, 'recaptcha-image', comprehensivePrompt);
             
-            console.log('[AI Solver] Extracted prompt:', prompt);
-            
-            // Call AI to solve with cropped image
-            const solution = await callAISolver(croppedImage || response.imageBase64, 'recaptcha-image', prompt);
-            
-            if (solution) {
+            if (solution && solution.toLowerCase() !== 'none') {
               console.log('[AI Solver] AI solution:', solution);
               
-              // Parse positions from response
-              const positions = solution.split(',')
+              // Parse positions from response - handle various formats
+              const cleanSolution = solution.replace(/[^\d,]/g, '');
+              const positions = cleanSolution.split(',')
                 .map(s => parseInt(s.trim()))
                 .filter(n => !isNaN(n) && n >= 1 && n <= 16);
               
               if (positions.length > 0) {
-                // Click the tiles through the iframe
-                // We'll simulate clicks at calculated positions
-                const gridSize = 3; // Usually 3x3
+                // Detect grid size (3x3 or 4x4) from iframe dimensions
+                const gridSize = iframeRect.width > 450 ? 4 : 3;
+                const headerHeight = 120; // Header with instructions
+                const footerHeight = 60; // Footer with verify button
+                const gridHeight = iframeRect.height - headerHeight - footerHeight;
                 const tileWidth = iframeRect.width / gridSize;
-                const tileHeight = (iframeRect.height - 100) / gridSize; // Account for header
+                const tileHeight = gridHeight / gridSize;
+                
+                console.log('[AI Solver] Grid size:', gridSize, 'x', gridSize);
+                console.log('[AI Solver] Clicking positions:', positions);
                 
                 for (const pos of positions) {
                   const col = (pos - 1) % gridSize;
                   const row = Math.floor((pos - 1) / gridSize);
                   
                   const x = iframeRect.left + (col * tileWidth) + (tileWidth / 2);
-                  const y = iframeRect.top + 100 + (row * tileHeight) + (tileHeight / 2); // +100 for header
+                  const y = iframeRect.top + headerHeight + (row * tileHeight) + (tileHeight / 2);
                   
-                  // Simulate click at this position
-                  simulateClickAtPosition(x, y);
-                  await delay(300 + Math.random() * 200);
+                  // Use debugger API for reliable clicking
+                  await new Promise((clickResolve) => {
+                    chrome.runtime.sendMessage({
+                      type: 'SIMULATE_CLICK',
+                      x: Math.round(x),
+                      y: Math.round(y)
+                    }, () => clickResolve());
+                  });
+                  
+                  await delay(400 + Math.random() * 300);
                 }
                 
-                // Wait and click verify
-                await delay(1000);
+                // Wait and click verify button
+                await delay(1500);
                 
-                // Find and click verify button
-                const verifyX = iframeRect.left + iframeRect.width - 60;
-                const verifyY = iframeRect.top + iframeRect.height - 30;
-                simulateClickAtPosition(verifyX, verifyY);
+                // Verify button is usually at bottom right
+                const verifyX = iframeRect.left + iframeRect.width - 80;
+                const verifyY = iframeRect.top + iframeRect.height - 35;
                 
-                resolve(true);
+                await new Promise((clickResolve) => {
+                  chrome.runtime.sendMessage({
+                    type: 'SIMULATE_CLICK',
+                    x: Math.round(verifyX),
+                    y: Math.round(verifyY)
+                  }, () => clickResolve());
+                });
+                
+                // Check if there's another challenge or if solved
+                await delay(2000);
+                
+                const newBframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+                if (newBframe && newBframe.offsetParent !== null) {
+                  console.log('[AI Solver] New challenge appeared, continuing...');
+                  // Recursively solve next challenge
+                  resolve(await solveRecaptchaImageChallenge());
+                } else {
+                  const responseTextarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+                  if (responseTextarea && responseTextarea.value) {
+                    console.log('[AI Solver] reCAPTCHA solved successfully!');
+                    resolve(true);
+                  } else {
+                    resolve(true); // Assume success if challenge disappeared
+                  }
+                }
               } else {
-                console.log('[AI Solver] No valid positions in solution');
+                console.log('[AI Solver] No valid positions in solution:', solution);
                 resolve(false);
               }
             } else {
+              console.log('[AI Solver] AI returned no solution or "none"');
               resolve(false);
             }
           } else {
-            // Fallback: Try without screenshot
-            console.log('[AI Solver] No screenshot available, trying fallback...');
+            console.log('[AI Solver] No screenshot available');
             resolve(false);
           }
         });
