@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - STABLE STEALTH 2025
+// Create fingerprint injection extension - CLEAN & STABLE 2025
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -32,7 +32,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - STABLE & POWERFUL
+    // inject.js - CLEANED SYNTAX
     const injectScript = `
 (function() {
   'use strict';
@@ -46,8 +46,10 @@ function createFingerprintScript(fingerprint, userDataDir) {
   // 2. Disable WebRTC Leaks
   try {
     if (window.RTCPeerConnection) {
-      window.RTCPeerConnection = function() { return {}; };
-      window.RTCPeerConnection.prototype.createOffer = function() { return Promise.resolve(); };
+      const originalCreateOffer = window.RTCPeerConnection.prototype.createOffer;
+      window.RTCPeerConnection.prototype.createOffer = function() {
+        return Promise.resolve();
+      };
     }
   } catch(e) {}
 
@@ -55,11 +57,11 @@ function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const vendor = fp.webglVendor || 'Google Inc. (NVIDIA)';
     const renderer = fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
-    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
     WebGLRenderingContext.prototype.getParameter = function(param) {
       if (param === 37445) return vendor;
       if (param === 37446) return renderer;
-      return getParameter.call(this, param);
+      return originalGetParameter.call(this, param);
     };
   } catch(e) {}
 
@@ -71,6 +73,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     const targetTZ = fp.timezone || 'UTC';
     const targetOffset = fp.timezoneOffset || 0;
     Date.prototype.getTimezoneOffset = function() { return targetOffset; };
+    
     const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
     Intl.DateTimeFormat.prototype.resolvedOptions = function() {
       const res = originalResolvedOptions.call(this);
@@ -79,7 +82,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
   } catch(e) {}
 
-  console.log('[Manus] Protection Active');
+  console.log('[Manus] System Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
