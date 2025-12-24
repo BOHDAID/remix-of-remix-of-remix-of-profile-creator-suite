@@ -144,7 +144,8 @@ export interface ElectronAPI {
   onProfileClosed: (callback: (profileId: string) => void) => void;
   
   // Browser window management
-  tileProfileWindows: (layout: 'grid' | 'horizontal' | 'vertical') => Promise<TileResult>;
+  getDisplays: () => Promise<DisplayInfo[]>;
+  tileProfileWindows: (options: TileOptions) => Promise<TileResult>;
   minimizeAllProfiles: () => Promise<void>;
   restoreAllProfiles: () => Promise<void>;
   focusProfile: (profileId: string) => Promise<void>;
@@ -194,8 +195,25 @@ export interface ElectronAPI {
   isElectron: boolean;
 }
 
+export interface DisplayInfo {
+  id: number;
+  index: number;
+  label: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  isPrimary: boolean;
+}
+
+export interface TileOptions {
+  layout: 'grid' | 'horizontal' | 'vertical';
+  displayIndex?: number;
+}
+
 export interface TileResult {
   success: boolean;
+  message?: string;
   error?: string;
 }
 

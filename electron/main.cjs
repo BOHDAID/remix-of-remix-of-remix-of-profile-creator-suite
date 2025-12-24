@@ -1236,14 +1236,31 @@ ipcMain.handle('get-running-profiles', () => {
   return Array.from(runningProfiles.keys());
 });
 
-// Tile profile windows in grid, horizontal, or vertical layout
-ipcMain.handle('tile-profile-windows', async (event, layout) => {
+// Get available displays/monitors
+ipcMain.handle('get-displays', () => {
   const { screen } = require('electron');
-
   const displays = screen.getAllDisplays();
-  const primaryDisplay = displays[0];
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  const { x: screenX, y: screenY } = primaryDisplay.workArea;
+  return displays.map((d, index) => ({
+    id: d.id,
+    index,
+    label: d.label || `شاشة ${index + 1}`,
+    width: d.workAreaSize.width,
+    height: d.workAreaSize.height,
+    x: d.workArea.x,
+    y: d.workArea.y,
+    isPrimary: d.id === screen.getPrimaryDisplay().id,
+  }));
+});
+
+// Tile profile windows in grid, horizontal, or vertical layout
+ipcMain.handle('tile-profile-windows', async (event, { layout, displayIndex }) => {
+  const { screen } = require('electron');
+  const displays = screen.getAllDisplays();
+  const targetDisplay = typeof displayIndex === 'number' && displays[displayIndex]
+    ? displays[displayIndex]
+    : displays[0];
+  const { width: screenWidth, height: screenHeight } = targetDisplay.workAreaSize;
+  const { x: screenX, y: screenY } = targetDisplay.workArea;
 
   const count = runningProfiles.size;
 
