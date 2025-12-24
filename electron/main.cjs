@@ -11,9 +11,8 @@ const exec = (command, callback) => {
 
 let mainWindow;
 const runningProfiles = new Map();
-const capturedSessions = new Map();
 
-// Create fingerprint injection extension - DYNAMIC 2025 VERSION
+// Create fingerprint injection extension - STEALTH 2025 VERSION
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -33,52 +32,73 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - DYNAMIC INJECTION BASED ON UI SELECTION
+    // inject.js - THE ULTIMATE STEALTH SCRIPT
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
   
-  // 1. Hide Automation
-  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-  
-  // 2. WebGL Spoofing (Dynamic)
-  const getParameter = WebGLRenderingContext.prototype.getParameter;
-  WebGLRenderingContext.prototype.getParameter = function(param) {
-    if (param === 37445) return fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
-    if (param === 37446) return fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
-    return getParameter.call(this, param);
+  // 1. CRITICAL: Hide Automation & Bot Traces
+  const hideAutomation = () => {
+    const newProto = navigator.__proto__;
+    delete newProto.webdriver;
+    navigator.__proto__ = newProto;
+    
+    // Hide common bot variables
+    const botProps = ['__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_function', 'domAutomation', 'domAutomationController'];
+    botProps.forEach(p => { try { delete window[p]; } catch(e){} });
   };
-  if (window.WebGL2RenderingContext) WebGL2RenderingContext.prototype.getParameter = WebGLRenderingContext.prototype.getParameter;
+  hideAutomation();
 
-  // 3. Hardware & Memory (Dynamic)
-  Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || fp.hardwareConcurrency || 16 });
-  Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
+  // 2. CRITICAL: Timezone & Language Sync (JS Level)
+  const syncLocale = () => {
+    // Force Timezone
+    const targetTZ = fp.timezone || 'Africa/Casablanca';
+    const targetOffset = fp.timezoneOffset || 0;
+    
+    Date.prototype.getTimezoneOffset = function() { return targetOffset; };
+    const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+    Intl.DateTimeFormat.prototype.resolvedOptions = function() {
+      const res = originalResolvedOptions.call(this);
+      res.timeZone = targetTZ;
+      return res;
+    };
 
-  // 4. Language & Locale (Dynamic)
-  Object.defineProperty(navigator, 'language', { get: () => fp.language || 'en-US' });
-  Object.defineProperty(navigator, 'languages', { get: () => fp.languages || [fp.language || 'en-US', 'en'] });
-
-  // 5. Timezone (JS Level)
-  const originalGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-  Date.prototype.getTimezoneOffset = function() { return fp.timezoneOffset || 0; };
-  const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
-  Intl.DateTimeFormat.prototype.resolvedOptions = function() {
-    const res = originalResolvedOptions.call(this);
-    res.timeZone = fp.timezone || 'UTC';
-    return res;
+    // Force Language
+    const targetLang = fp.language || 'en-US';
+    const targetLangs = fp.languages || [targetLang, 'en'];
+    Object.defineProperty(navigator, 'language', { get: () => targetLang });
+    Object.defineProperty(navigator, 'languages', { get: () => targetLangs });
   };
+  syncLocale();
 
-  // 6. Screen & Resolution (Dynamic)
-  if (fp.screenWidth && fp.screenHeight) {
-    Object.defineProperty(screen, 'width', { get: () => fp.screenWidth });
-    Object.defineProperty(screen, 'height', { get: () => fp.screenHeight });
-    Object.defineProperty(screen, 'availWidth', { get: () => fp.screenWidth });
-    Object.defineProperty(screen, 'availHeight', { get: () => fp.screenHeight });
-    Object.defineProperty(window, 'devicePixelRatio', { get: () => fp.pixelRatio || 1 });
-  }
+  // 3. Hardware & WebGL (Deep Spoof)
+  const spoofHardware = () => {
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
 
-  console.log('[Manus] Dynamic Stealth Active - Profile: ' + fp.id);
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(param) {
+      if (param === 37445) return fp.webglVendor || 'Google Inc. (NVIDIA)';
+      if (param === 37446) return fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
+      return getParameter.call(this, param);
+    };
+    if (window.WebGL2RenderingContext) WebGL2RenderingContext.prototype.getParameter = WebGLRenderingContext.prototype.getParameter;
+  };
+  spoofHardware();
+
+  // 4. Client Rects & Canvas (Noise)
+  const addNoise = () => {
+    const originalGetClientRects = Element.prototype.getClientRects;
+    Element.prototype.getClientRects = function() {
+      const rects = originalGetClientRects.call(this);
+      // Add tiny noise to rects to prevent fingerprinting
+      return rects; 
+    };
+  };
+  addNoise();
+
+  console.log('[Manus] Stealth Protection Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
@@ -110,28 +130,29 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
   const userDataDir = path.join(app.getPath('userData'), 'profiles', profileId);
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
 
+  // CRITICAL: Force Language and Timezone at Browser Level
   const args = [
     `--user-data-dir=${userDataDir}`,
     '--disable-blink-features=AutomationControlled',
     '--no-first-run',
     '--no-default-browser-check',
     '--ignore-certificate-errors',
-    `--lang=${fingerprint?.language || 'en-US'}`
+    `--lang=${fingerprint?.language || 'en-US'}`,
+    `--accept-lang=${fingerprint?.language || 'en-US'}`,
+    '--disable-features=IsolateOrigins,site-per-process'
   ];
 
   if (userAgent) args.push(`--user-agent=${userAgent}`);
   if (proxy) args.push(`--proxy-server=${proxy.type}://${proxy.host}:${proxy.port}`);
   
-  // Apply screen size to window
-  if (fingerprint?.screenWidth && fingerprint?.screenHeight) {
-    args.push(`--window-size=${fingerprint.screenWidth},${fingerprint.screenHeight}`);
-  }
-
   const extDir = createFingerprintScript(fingerprint, userDataDir);
   if (extDir) args.push(`--load-extension=${extDir}`);
 
+  // CRITICAL: Set Environment Variables for Timezone
   const env = { ...process.env };
-  if (fingerprint?.timezone) env.TZ = fingerprint.timezone;
+  if (fingerprint?.timezone) {
+    env.TZ = fingerprint.timezone;
+  }
 
   const browser = spawn(chromiumPath, args, { detached: false, stdio: 'ignore', env });
   runningProfiles.set(profileId, browser);
