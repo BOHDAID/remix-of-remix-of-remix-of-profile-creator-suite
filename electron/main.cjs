@@ -13,7 +13,7 @@ let mainWindow;
 const runningProfiles = new Map();
 const capturedSessions = new Map();
 
-// Create fingerprint injection extension - ULTIMATE 2025 VERSION
+// Create fingerprint injection extension - DYNAMIC 2025 VERSION
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -33,31 +33,31 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - DEEP INJECTION & STEALTH
+    // inject.js - DYNAMIC INJECTION BASED ON UI SELECTION
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
   
-  // 1. Hide Automation (Critical)
+  // 1. Hide Automation
   Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   
-  // 2. WebGL Spoofing (Deep)
+  // 2. WebGL Spoofing (Dynamic)
   const getParameter = WebGLRenderingContext.prototype.getParameter;
   WebGLRenderingContext.prototype.getParameter = function(param) {
-    if (param === 37445) return fp.webglVendor || 'Google Inc. (NVIDIA)';
-    if (param === 37446) return fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
+    if (param === 37445) return fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
+    if (param === 37446) return fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
     return getParameter.call(this, param);
   };
   if (window.WebGL2RenderingContext) WebGL2RenderingContext.prototype.getParameter = WebGLRenderingContext.prototype.getParameter;
 
-  // 3. Hardware & Memory
-  Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
+  // 3. Hardware & Memory (Dynamic)
+  Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || fp.hardwareConcurrency || 16 });
   Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
 
-  // 4. Language & Locale
+  // 4. Language & Locale (Dynamic)
   Object.defineProperty(navigator, 'language', { get: () => fp.language || 'en-US' });
-  Object.defineProperty(navigator, 'languages', { get: () => fp.languages || ['en-US', 'en'] });
+  Object.defineProperty(navigator, 'languages', { get: () => fp.languages || [fp.language || 'en-US', 'en'] });
 
   // 5. Timezone (JS Level)
   const originalGetTimezoneOffset = Date.prototype.getTimezoneOffset;
@@ -69,18 +69,16 @@ function createFingerprintScript(fingerprint, userDataDir) {
     return res;
   };
 
-  // 6. Audio Noise (Subtle)
-  const originalCreateOscillator = AudioContext.prototype.createOscillator;
-  AudioContext.prototype.createOscillator = function() {
-    const osc = originalCreateOscillator.call(this);
-    const originalStart = osc.start;
-    osc.start = function(when) {
-      return originalStart.call(this, when);
-    };
-    return osc;
-  };
+  // 6. Screen & Resolution (Dynamic)
+  if (fp.screenWidth && fp.screenHeight) {
+    Object.defineProperty(screen, 'width', { get: () => fp.screenWidth });
+    Object.defineProperty(screen, 'height', { get: () => fp.screenHeight });
+    Object.defineProperty(screen, 'availWidth', { get: () => fp.screenWidth });
+    Object.defineProperty(screen, 'availHeight', { get: () => fp.screenHeight });
+    Object.defineProperty(window, 'devicePixelRatio', { get: () => fp.pixelRatio || 1 });
+  }
 
-  console.log('[Manus] Stealth Active');
+  console.log('[Manus] Dynamic Stealth Active - Profile: ' + fp.id);
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
@@ -124,6 +122,11 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
   if (userAgent) args.push(`--user-agent=${userAgent}`);
   if (proxy) args.push(`--proxy-server=${proxy.type}://${proxy.host}:${proxy.port}`);
   
+  // Apply screen size to window
+  if (fingerprint?.screenWidth && fingerprint?.screenHeight) {
+    args.push(`--window-size=${fingerprint.screenWidth},${fingerprint.screenHeight}`);
+  }
+
   const extDir = createFingerprintScript(fingerprint, userDataDir);
   if (extDir) args.push(`--load-extension=${extDir}`);
 
@@ -142,14 +145,6 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
 ipcMain.handle('stop-profile', async (event, profileId) => {
   const browser = runningProfiles.get(profileId);
   if (browser) browser.kill();
-  return { success: true };
-});
-
-ipcMain.handle('tile-profile-windows', async (event, layout) => {
-  const displays = screen.getAllDisplays();
-  const primaryDisplay = displays[0];
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  // ... (rest of tiling logic simplified for brevity or kept as is)
   return { success: true };
 });
 
