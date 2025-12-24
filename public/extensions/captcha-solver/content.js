@@ -151,9 +151,70 @@
       if (typeof message.autoSolve === 'boolean') autoSolveEnabled = message.autoSolve;
       sendResponse({ enabled: solverEnabled, autoSolve: autoSolveEnabled });
     }
+    
+    if (message.type === 'TEST_CLICK') {
+      handleTestClick().then(sendResponse);
+      return true; // Keep channel open for async
+    }
 
     return true;
   });
+  
+  // Test click handler - finds reCAPTCHA and attempts to click it
+  async function handleTestClick() {
+    console.log('[AI Solver] Test click requested');
+    
+    // Find reCAPTCHA anchor iframe
+    const anchorIframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+    
+    if (!anchorIframe) {
+      return { success: false, error: 'لم يتم العثور على reCAPTCHA في هذه الصفحة' };
+    }
+    
+    const rect = anchorIframe.getBoundingClientRect();
+    
+    if (rect.width === 0 || rect.height === 0) {
+      return { success: false, error: 'reCAPTCHA غير مرئي' };
+    }
+    
+    // Calculate checkbox position
+    const checkboxX = Math.round(rect.left + 28);
+    const checkboxY = Math.round(rect.top + rect.height / 2);
+    
+    console.log('[AI Solver] Test clicking at:', checkboxX, checkboxY);
+    
+    // Use debugger API via background
+    const clickResult = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        type: 'SIMULATE_CLICK',
+        x: checkboxX,
+        y: checkboxY
+      }, (response) => {
+        resolve(response || { success: false, error: 'لا استجابة' });
+      });
+    });
+    
+    if (clickResult.success) {
+      // Wait and check if challenge appeared or solved
+      await delay(2000);
+      
+      const bframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+      const response = document.querySelector('textarea[name="g-recaptcha-response"]');
+      
+      if (response && response.value) {
+        return { success: true, message: '✅ تم حل reCAPTCHA تلقائياً!' };
+      } else if (bframe && bframe.offsetParent !== null) {
+        return { success: true, message: '✅ ظهر تحدي الصور - النقر يعمل!' };
+      } else {
+        return { success: true, message: '✅ تم النقر - تحقق من الصفحة' };
+      }
+    } else {
+      return { 
+        success: false, 
+        error: clickResult.error || 'فشل النقر - تحقق من إذن debugger' 
+      };
+    }
+  }
   
   // Main solving function
   async function solveCaptcha(data) {
@@ -505,10 +566,6 @@
       // Get the iframe's bounding rect
       const iframeRect = bframeIframe.getBoundingClientRect();
       
-      // We'll capture using html2canvas if available, otherwise try alternative methods
-      // For now, let's try to screenshot the visible area using the canvas API
-      
-      // Alternative: Capture using browser extension screenshot capability
       // Request screenshot from background script
       return new Promise((resolve) => {
         chrome.runtime.sendMessage({
@@ -521,7 +578,10 @@
           }
         }, async (response) => {
           if (response && response.imageBase64) {
-            console.log('[AI Solver] Got screenshot, sending to AI...');
+            console.log('[AI Solver] Got screenshot, cropping to grid area...');
+            
+            // Crop the screenshot to only the image grid (remove header ~120px and footer ~60px)
+            const croppedImage = await cropImageToGrid(response.imageBase64, iframeRect);
             
             // Extract the challenge prompt from the page
             let prompt = '';
@@ -531,12 +591,14 @@
               for (const el of challengeTexts) {
                 const text = el.textContent?.trim() || '';
                 if (text.includes('Select all') || text.includes('اختر') || 
-                    text.includes('squares with') || text.includes('images with')) {
+                    text.includes('squares with') || text.includes('images with') ||
+                    text.includes('Click verify') || text.includes('التحقق')) {
                   // Extract the target object
-                  const match = text.match(/with\s+(\w+)/i) || text.match(/all\s+(\w+)/i);
+                  const match = text.match(/with\s+(\w+)/i) || text.match(/all\s+(\w+)/i) ||
+                                text.match(/containing\s+(\w+)/i) || text.match(/showing\s+(\w+)/i);
                   if (match) {
                     prompt = match[1];
-                  } else {
+                  } else if (text.length < 100) {
                     prompt = text;
                   }
                   break;
@@ -544,8 +606,10 @@
               }
             } catch (e) {}
             
-            // Call AI to solve
-            const solution = await callAISolver(response.imageBase64, 'recaptcha-image', prompt);
+            console.log('[AI Solver] Extracted prompt:', prompt);
+            
+            // Call AI to solve with cropped image
+            const solution = await callAISolver(croppedImage || response.imageBase64, 'recaptcha-image', prompt);
             
             if (solution) {
               console.log('[AI Solver] AI solution:', solution);
@@ -617,6 +681,64 @@
         view: window, bubbles: true, cancelable: true, clientX: x, clientY: y
       }));
     }
+  }
+  
+  // Crop full-page screenshot to just the reCAPTCHA image grid area
+  async function cropImageToGrid(base64Image, iframeRect) {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Calculate crop area relative to viewport
+          // reCAPTCHA challenge structure:
+          // - Header with instructions: ~120px
+          // - Image grid: main area
+          // - Footer with buttons: ~60px
+          
+          const headerHeight = 120;
+          const footerHeight = 60;
+          
+          // The screenshot is of the full visible tab
+          // We need to extract just the iframe area, then crop to grid
+          const scaleX = img.width / window.innerWidth;
+          const scaleY = img.height / window.innerHeight;
+          
+          // Calculate source coordinates in the full screenshot
+          const srcX = iframeRect.left * scaleX;
+          const srcY = (iframeRect.top + headerHeight) * scaleY;
+          const srcWidth = iframeRect.width * scaleX;
+          const srcHeight = (iframeRect.height - headerHeight - footerHeight) * scaleY;
+          
+          // Set canvas to grid dimensions
+          canvas.width = srcWidth;
+          canvas.height = srcHeight;
+          
+          // Draw cropped area
+          ctx.drawImage(
+            img,
+            srcX, srcY, srcWidth, srcHeight, // Source rectangle
+            0, 0, srcWidth, srcHeight // Destination
+          );
+          
+          const croppedBase64 = canvas.toDataURL('image/png');
+          console.log('[AI Solver] Cropped image to grid area:', canvas.width, 'x', canvas.height);
+          resolve(croppedBase64);
+        };
+        
+        img.onerror = () => {
+          console.log('[AI Solver] Failed to crop image');
+          resolve(null);
+        };
+        
+        img.src = base64Image;
+      } catch (e) {
+        console.error('[AI Solver] Crop error:', e);
+        resolve(null);
+      }
+    });
   }
   
   // Solve hCaptcha
