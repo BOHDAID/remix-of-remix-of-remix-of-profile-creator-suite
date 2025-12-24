@@ -889,6 +889,71 @@ ipcMain.handle('extract-extension-zip', async (event, zipPath) => {
   }
 });
 
+// ========== Extension Learning Data API (for CAPTCHA Solver sync) ==========
+
+// Path to store synced extension learning data
+const learningDataPath = path.join(app.getPath('userData'), 'captcha-learning-data.json');
+
+// Load learning data from disk
+function loadLearningData() {
+  try {
+    if (fs.existsSync(learningDataPath)) {
+      const raw = fs.readFileSync(learningDataPath, 'utf-8');
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.error('Failed to load learning data:', err);
+  }
+  return null;
+}
+
+// Save learning data to disk
+function saveLearningData(data) {
+  try {
+    fs.writeFileSync(learningDataPath, JSON.stringify(data, null, 2));
+    return true;
+  } catch (err) {
+    console.error('Failed to save learning data:', err);
+    return false;
+  }
+}
+
+ipcMain.handle('get-extension-learning-data', async () => {
+  try {
+    const data = loadLearningData();
+    if (data) {
+      return { success: true, data };
+    }
+    // Return default empty data
+    return {
+      success: true,
+      data: {
+        enabled: true,
+        autoSolve: true,
+        totalSolved: 0,
+        successRate: 0,
+        learningData: {},
+        lastSync: null,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync-extension-learning-data', async (event, data) => {
+  try {
+    data.lastSync = new Date().toISOString();
+    const saved = saveLearningData(data);
+    if (saved) {
+      return { success: true };
+    }
+    return { success: false, error: 'Failed to save data' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Auto-updater IPC handlers
 ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall(false, true);

@@ -58,6 +58,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopContinuousCapture: () => ipcRenderer.invoke('stop-continuous-capture'),
   onScreenCaptured: (callback) => ipcRenderer.on('screen-captured', (_, capture) => callback(capture)),
   
+  // ========== Extension Learning Data API (CAPTCHA Solver) ==========
+  getExtensionLearningData: () => ipcRenderer.invoke('get-extension-learning-data'),
+  syncExtensionLearningData: (data) => ipcRenderer.invoke('sync-extension-learning-data', data),
+  
   // ========== Real Proxy Testing API ==========
   testProxyReal: (proxyConfig) => ipcRenderer.invoke('test-proxy-real', proxyConfig),
   

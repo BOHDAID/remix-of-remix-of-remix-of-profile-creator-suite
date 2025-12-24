@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Bot, 
   Brain, 
@@ -15,7 +15,10 @@ import {
   Target,
   Activity,
   RotateCcw,
-  Gauge
+  Gauge,
+  Download,
+  Upload,
+  Plug
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +39,7 @@ import {
   CaptchaSolverConfig,
   SolverSession
 } from '@/lib/captchaSolver';
+import { isElectron, getElectronAPI, ExtensionLearningData } from '@/lib/electron';
 
 interface SolveLog {
   id: string;
@@ -55,6 +59,31 @@ export function CaptchaSolverView() {
   const [solveLogs, setSolveLogs] = useState<SolveLog[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [isSimulating, setIsSimulating] = useState(false);
+
+  // Extension sync state
+  const [extensionData, setExtensionData] = useState<ExtensionLearningData | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  const electronAPI = getElectronAPI();
+
+  // Load extension learning data on mount
+  const loadExtensionData = useCallback(async () => {
+    if (!isElectron() || !electronAPI) return;
+    try {
+      const result = await electronAPI.getExtensionLearningData();
+      if (result.success && result.data) {
+        setExtensionData(result.data);
+        setLastSyncTime(result.data.lastSync || null);
+      }
+    } catch (error) {
+      console.error('Failed to load extension data:', error);
+    }
+  }, [electronAPI]);
+
+  useEffect(() => {
+    loadExtensionData();
+  }, [loadExtensionData]);
 
   useEffect(() => {
     // Subscribe to solver events
@@ -140,6 +169,57 @@ export function CaptchaSolverView() {
     setStats(captchaSolver.getStats());
     setSolveLogs([]);
     toast.success('تم إعادة تعيين بيانات التعلم');
+  };
+
+  // Sync extension data to app
+  const handleSyncFromExtension = async () => {
+    if (!isElectron() || !electronAPI) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      await loadExtensionData();
+      toast.success('تم تحديث البيانات من الإضافة');
+    } catch (error) {
+      toast.error('فشل تحديث البيانات');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Push app data to extension storage
+  const handleSyncToExtension = async () => {
+    if (!isElectron() || !electronAPI) {
+      toast.error('هذه الميزة متاحة فقط في تطبيق سطح المكتب');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const dataToSync: ExtensionLearningData = {
+        enabled: config.enabled,
+        autoSolve: config.autoSolve,
+        totalSolved: stats.totalAttempts,
+        successRate: stats.successRate,
+        learningData: Object.fromEntries(
+          Object.entries(stats.typeStats).map(([type, s]) => [
+            type,
+            { success: s.success, failed: s.failed, patterns: [] },
+          ])
+        ),
+      };
+      const result = await electronAPI.syncExtensionLearningData(dataToSync);
+      if (result.success) {
+        setLastSyncTime(new Date().toISOString());
+        toast.success('تم حفظ البيانات للإضافة');
+      } else {
+        toast.error(result.error || 'فشل حفظ البيانات');
+      }
+    } catch (error) {
+      toast.error('فشل حفظ البيانات');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const captchaTypes = [
@@ -278,6 +358,104 @@ export function CaptchaSolverView() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Extension Sync Panel */}
+          {isElectron() && (
+            <Card className="glass-card border-primary/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Plug className="w-5 h-5 text-primary" />
+                  مزامنة إضافة المتصفح
+                </CardTitle>
+                <CardDescription>
+                  ربط بيانات التعلم بين التطبيق وإضافة حل CAPTCHA في المتصفح
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Extension Stats */}
+                {extensionData && (
+                  <div className="grid grid-cols-4 gap-3 p-4 bg-muted/50 rounded-lg">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-primary">{extensionData.totalSolved}</p>
+                      <p className="text-xs text-muted-foreground">تم حلها</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-success">{extensionData.successRate.toFixed(0)}%</p>
+                      <p className="text-xs text-muted-foreground">معدل النجاح</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold">{Object.keys(extensionData.learningData).length}</p>
+                      <p className="text-xs text-muted-foreground">أنواع متعلّمة</p>
+                    </div>
+                    <div className="text-center">
+                      <Badge variant={extensionData.enabled ? 'default' : 'secondary'}>
+                        {extensionData.enabled ? 'مفعّل' : 'متوقف'}
+                      </Badge>
+                      <p className="text-xs text-muted-foreground mt-1">حالة الإضافة</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Learned Types from Extension */}
+                {extensionData && Object.keys(extensionData.learningData).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">أنواع CAPTCHA المتعلّمة في الإضافة:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(extensionData.learningData).map(([type, data]) => {
+                        const total = data.success + data.failed;
+                        const rate = total > 0 ? (data.success / total) * 100 : 0;
+                        return (
+                          <Badge key={type} variant="outline" className="gap-1">
+                            <span>{type}</span>
+                            <span className="text-success">{data.success}</span>/
+                            <span className="text-destructive">{data.failed}</span>
+                            <span className="text-muted-foreground">({rate.toFixed(0)}%)</span>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Last Sync Time */}
+                {lastSyncTime && (
+                  <p className="text-xs text-muted-foreground">
+                    آخر مزامنة: {new Date(lastSyncTime).toLocaleString('ar-SA')}
+                  </p>
+                )}
+
+                {/* Sync Buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncFromExtension}
+                    disabled={isSyncing}
+                    className="flex-1"
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="w-4 h-4 animate-spin ml-2" />
+                    ) : (
+                      <Download className="w-4 h-4 ml-2" />
+                    )}
+                    جلب من الإضافة
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncToExtension}
+                    disabled={isSyncing}
+                    className="flex-1"
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="w-4 h-4 animate-spin ml-2" />
+                    ) : (
+                      <Upload className="w-4 h-4 ml-2" />
+                    )}
+                    حفظ للإضافة
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="learning" className="space-y-6">
