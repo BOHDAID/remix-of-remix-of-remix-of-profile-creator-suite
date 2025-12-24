@@ -56,6 +56,60 @@ export type Database = {
         }
         Relationships: []
       }
+      pairing_codes: {
+        Row: {
+          code: string
+          created_at: string
+          device_name: string | null
+          expires_at: string
+          id: string
+          is_active: boolean
+          used_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          device_name?: string | null
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          used_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          device_name?: string | null
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          used_at?: string | null
+        }
+        Relationships: []
+      }
+      pending_sessions: {
+        Row: {
+          created_at: string
+          fetched_at: string | null
+          id: string
+          pairing_code: string
+          session_data: Json
+        }
+        Insert: {
+          created_at?: string
+          fetched_at?: string | null
+          id?: string
+          pairing_code: string
+          session_data: Json
+        }
+        Update: {
+          created_at?: string
+          fetched_at?: string | null
+          id?: string
+          pairing_code?: string
+          session_data?: Json
+        }
+        Relationships: []
+      }
       saved_credentials: {
         Row: {
           auto_login: boolean | null

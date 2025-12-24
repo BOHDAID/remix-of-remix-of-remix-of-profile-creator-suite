@@ -1,12 +1,28 @@
 // Popup Script for Session Capture Extension
 
+const SUPABASE_URL = 'https://yygquhqavbandcqkzzcn.supabase.co';
 let currentTab = null;
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   await loadCurrentTab();
   await loadSessions();
+  loadSavedPairingCode();
 });
+
+// Load saved pairing code
+function loadSavedPairingCode() {
+  chrome.storage.local.get(['pairingCode'], (result) => {
+    if (result.pairingCode) {
+      document.getElementById('pairingCode').value = result.pairingCode;
+    }
+  });
+}
+
+// Save pairing code
+function savePairingCode(code) {
+  chrome.storage.local.set({ pairingCode: code });
+}
 
 // Load current tab info
 async function loadCurrentTab() {
@@ -127,44 +143,83 @@ document.getElementById('captureBtn').addEventListener('click', async () => {
   }
 });
 
-// Sync with main app
-document.getElementById('syncBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('syncBtn');
-  const btnText = document.getElementById('syncBtnText');
+// Send sessions via pairing code
+document.getElementById('sendBtn').addEventListener('click', async () => {
+  const codeInput = document.getElementById('pairingCode');
+  const code = codeInput.value.trim().toUpperCase();
+  const sendBtn = document.getElementById('sendBtn');
+  const statusEl = document.getElementById('pairingStatus');
   
-  btn.disabled = true;
-  btnText.innerHTML = '<span class="spinner"></span> جاري المزامنة...';
+  if (!code || code.length < 4) {
+    statusEl.textContent = 'أدخل كود ربط صالح (4 أحرف على الأقل)';
+    statusEl.className = 'pairing-status error';
+    return;
+  }
   
-  // First force sync to chrome.storage
-  chrome.runtime.sendMessage({ action: 'forceSync' }, async (response) => {
-    if (response?.success) {
-      // Then try to sync directly to the current tab if it's the BHD app
-      if (currentTab) {
-        chrome.runtime.sendMessage({ action: 'syncToPage', tabId: currentTab.id }, (syncResponse) => {
-          btn.classList.add('success');
-          if (syncResponse?.success) {
-            btnText.textContent = '✅ تمت المزامنة مع التطبيق!';
-            showToast('تمت المزامنة مباشرة مع التطبيق', 'success');
-          } else {
-            btnText.textContent = '✅ تمت المزامنة!';
-            showToast('تمت المزامنة - افتح التطبيق لتحميل الجلسات', 'success');
-          }
-        });
-      } else {
-        btn.classList.add('success');
-        btnText.textContent = '✅ تمت المزامنة!';
-        showToast('تمت المزامنة مع التطبيق الرئيسي', 'success');
-      }
-    } else {
-      showToast('فشلت المزامنة', 'error');
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = '<span class="spinner"></span>';
+  statusEl.textContent = 'جاري التحقق من الكود...';
+  statusEl.className = 'pairing-status info';
+  
+  try {
+    // First verify the code
+    const verifyRes = await fetch(`${SUPABASE_URL}/functions/v1/sync-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'verify', pairingCode: code })
+    });
+    
+    const verifyData = await verifyRes.json();
+    
+    if (!verifyData.success) {
+      throw new Error(verifyData.error || 'كود غير صالح');
     }
     
-    setTimeout(() => {
-      btn.classList.remove('success');
-      btn.disabled = false;
-      btnText.textContent = 'مزامنة مع التطبيق';
-    }, 2000);
-  });
+    // Save the valid code
+    savePairingCode(code);
+    
+    // Get sessions
+    const sessionsData = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'getSessions' }, resolve);
+    });
+    
+    const sessions = sessionsData?.sessions || [];
+    
+    if (sessions.length === 0) {
+      statusEl.textContent = 'لا توجد جلسات لإرسالها - التقط جلسة أولاً';
+      statusEl.className = 'pairing-status error';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'إرسال';
+      return;
+    }
+    
+    statusEl.textContent = `جاري إرسال ${sessions.length} جلسة...`;
+    
+    // Push sessions
+    const pushRes = await fetch(`${SUPABASE_URL}/functions/v1/sync-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'push', pairingCode: code, sessions })
+    });
+    
+    const pushData = await pushRes.json();
+    
+    if (!pushData.success) {
+      throw new Error(pushData.error || 'فشل الإرسال');
+    }
+    
+    statusEl.textContent = `✅ تم إرسال ${pushData.count} جلسة بنجاح!`;
+    statusEl.className = 'pairing-status success';
+    showToast(`تم إرسال ${pushData.count} جلسة إلى التطبيق`, 'success');
+    
+  } catch (error) {
+    console.error('[Popup] Send error:', error);
+    statusEl.textContent = error.message || 'حدث خطأ';
+    statusEl.className = 'pairing-status error';
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'إرسال';
+  }
 });
 
 // Copy session to clipboard

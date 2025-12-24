@@ -50,6 +50,7 @@ import {
   UniversalSession, 
   LoginCredential
 } from '@/lib/universalSessionCapture';
+import { PairingCodePanel } from './PairingCodePanel';
 
 const SETTINGS_STORAGE_KEY = 'session_manager_settings';
 
@@ -642,6 +643,9 @@ export function SessionManagerView() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pairing Code Panel */}
+      <PairingCodePanel onSessionsImported={loadData} />
 
       {/* Search */}
       <div className="relative">
