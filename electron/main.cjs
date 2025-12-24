@@ -38,7 +38,8 @@ function createFingerprintScript(fingerprint, userDataDir) {
     
     // Extract browser version from UserAgent for consistency
     const extractChromeVersion = (ua) => {
-      const match = ua?.match(/Chrome\\/([0-9]+)/);
+      if (!ua) return '131';
+      const match = ua.match(/Chrome\/([0-9]+)/);
       return match ? match[1] : '131';
     };
     
