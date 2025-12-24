@@ -234,9 +234,9 @@
   }
   
   // Call AI solver API
-  async function callAISolver(imageBase64, captchaType) {
+  async function callAISolver(imageBase64, captchaType, prompt = '') {
     try {
-      console.log('[AI Solver] Calling AI API for', captchaType);
+      console.log('[AI Solver] Calling AI API for', captchaType, 'with prompt:', prompt);
       
       const response = await fetch(`${SUPABASE_URL}/functions/v1/solve-captcha`, {
         method: 'POST',
@@ -245,7 +245,8 @@
         },
         body: JSON.stringify({
           imageBase64,
-          captchaType
+          captchaType,
+          prompt
         })
       });
       
@@ -328,25 +329,36 @@
   
   // Solve reCAPTCHA v2 by simulating human behavior
   async function solveRecaptchaV2() {
-    const iframe = document.querySelector('iframe[src*="recaptcha"]');
-    if (!iframe) return false;
+    console.log('[AI Solver] Starting reCAPTCHA v2 solve...');
     
-    try {
-      // Try to click the checkbox
-      const checkbox = iframe.contentDocument?.querySelector('.recaptcha-checkbox');
-      if (checkbox) {
-        await simulateHumanClick(checkbox);
-        await delay(1000);
-        
-        // Check if solved (no challenge appeared)
-        const challenge = document.querySelector('iframe[src*="recaptcha/api2/bframe"]');
-        if (!challenge) {
+    // First, check if there's an image challenge visible
+    const bframeIframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+    
+    if (bframeIframe) {
+      console.log('[AI Solver] Image challenge detected, solving with AI...');
+      return await solveRecaptchaImageChallenge();
+    }
+    
+    // Try to click the checkbox first
+    const anchorIframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+    if (anchorIframe) {
+      try {
+        // Try clicking within the iframe (might fail due to cross-origin)
+        const checkbox = anchorIframe.contentDocument?.querySelector('.recaptcha-checkbox-border');
+        if (checkbox) {
+          await simulateHumanClick(checkbox);
+          await delay(2000);
+          
+          // Check if challenge appeared
+          const newBframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+          if (newBframe) {
+            return await solveRecaptchaImageChallenge();
+          }
           return true;
         }
+      } catch (e) {
+        console.log('[AI Solver] Cannot access iframe content (cross-origin)');
       }
-    } catch (error) {
-      // Cross-origin, try alternative approach
-      console.log('[AI Solver] Cross-origin reCAPTCHA, using alternative method');
     }
     
     // Alternative: Execute reCAPTCHA callback if available
@@ -354,10 +366,143 @@
       try {
         const token = await grecaptcha.execute();
         if (token) return true;
-      } catch (e) {}
+      } catch (e) {
+        console.log('[AI Solver] grecaptcha.execute failed:', e);
+      }
     }
     
     return false;
+  }
+  
+  // Solve reCAPTCHA image challenge using AI
+  async function solveRecaptchaImageChallenge() {
+    console.log('[AI Solver] Solving reCAPTCHA image challenge...');
+    showStatus('جاري تحليل تحدي الصور...', 'processing');
+    
+    // The reCAPTCHA challenge is in an iframe - we need to capture it
+    const bframeIframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+    
+    if (!bframeIframe) {
+      console.log('[AI Solver] No bframe iframe found');
+      return false;
+    }
+    
+    try {
+      // Get the iframe's bounding rect
+      const iframeRect = bframeIframe.getBoundingClientRect();
+      
+      // We'll capture using html2canvas if available, otherwise try alternative methods
+      // For now, let's try to screenshot the visible area using the canvas API
+      
+      // Alternative: Capture using browser extension screenshot capability
+      // Request screenshot from background script
+      return new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'CAPTURE_SCREEN',
+          rect: {
+            x: iframeRect.left + window.scrollX,
+            y: iframeRect.top + window.scrollY,
+            width: iframeRect.width,
+            height: iframeRect.height
+          }
+        }, async (response) => {
+          if (response && response.imageBase64) {
+            console.log('[AI Solver] Got screenshot, sending to AI...');
+            
+            // Extract the challenge prompt from the page
+            let prompt = '';
+            try {
+              // Try to find the challenge text in any visible elements
+              const challengeTexts = document.body.querySelectorAll('*');
+              for (const el of challengeTexts) {
+                const text = el.textContent?.trim() || '';
+                if (text.includes('Select all') || text.includes('اختر') || 
+                    text.includes('squares with') || text.includes('images with')) {
+                  // Extract the target object
+                  const match = text.match(/with\s+(\w+)/i) || text.match(/all\s+(\w+)/i);
+                  if (match) {
+                    prompt = match[1];
+                  } else {
+                    prompt = text;
+                  }
+                  break;
+                }
+              }
+            } catch (e) {}
+            
+            // Call AI to solve
+            const solution = await callAISolver(response.imageBase64, 'recaptcha-image', prompt);
+            
+            if (solution) {
+              console.log('[AI Solver] AI solution:', solution);
+              
+              // Parse positions from response
+              const positions = solution.split(',')
+                .map(s => parseInt(s.trim()))
+                .filter(n => !isNaN(n) && n >= 1 && n <= 16);
+              
+              if (positions.length > 0) {
+                // Click the tiles through the iframe
+                // We'll simulate clicks at calculated positions
+                const gridSize = 3; // Usually 3x3
+                const tileWidth = iframeRect.width / gridSize;
+                const tileHeight = (iframeRect.height - 100) / gridSize; // Account for header
+                
+                for (const pos of positions) {
+                  const col = (pos - 1) % gridSize;
+                  const row = Math.floor((pos - 1) / gridSize);
+                  
+                  const x = iframeRect.left + (col * tileWidth) + (tileWidth / 2);
+                  const y = iframeRect.top + 100 + (row * tileHeight) + (tileHeight / 2); // +100 for header
+                  
+                  // Simulate click at this position
+                  simulateClickAtPosition(x, y);
+                  await delay(300 + Math.random() * 200);
+                }
+                
+                // Wait and click verify
+                await delay(1000);
+                
+                // Find and click verify button
+                const verifyX = iframeRect.left + iframeRect.width - 60;
+                const verifyY = iframeRect.top + iframeRect.height - 30;
+                simulateClickAtPosition(verifyX, verifyY);
+                
+                resolve(true);
+              } else {
+                console.log('[AI Solver] No valid positions in solution');
+                resolve(false);
+              }
+            } else {
+              resolve(false);
+            }
+          } else {
+            // Fallback: Try without screenshot
+            console.log('[AI Solver] No screenshot available, trying fallback...');
+            resolve(false);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('[AI Solver] Image challenge error:', error);
+      return false;
+    }
+  }
+  
+  // Simulate click at screen position
+  function simulateClickAtPosition(x, y) {
+    const element = document.elementFromPoint(x, y);
+    if (element) {
+      element.dispatchEvent(new MouseEvent('mousedown', {
+        view: window, bubbles: true, cancelable: true, clientX: x, clientY: y
+      }));
+      element.dispatchEvent(new MouseEvent('mouseup', {
+        view: window, bubbles: true, cancelable: true, clientX: x, clientY: y
+      }));
+      element.dispatchEvent(new MouseEvent('click', {
+        view: window, bubbles: true, cancelable: true, clientX: x, clientY: y
+      }));
+    }
   }
   
   // Solve hCaptcha
@@ -391,20 +536,12 @@
     try {
       showStatus('جاري تحليل الصور...', 'processing');
       
-      // Capture the container as image
-      const canvas = document.createElement('canvas');
-      const rect = captchaContainer.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-      
-      // For now, we'll try to get any images in the container
       const images = captchaContainer.querySelectorAll('img');
       if (images.length > 0) {
         const imageBase64 = await imageToBase64(images[0]);
         const solution = await callAISolver(imageBase64, 'image');
         
         if (solution) {
-          // Parse positions and click
           const positions = solution.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
           const tiles = captchaContainer.querySelectorAll('.rc-imageselect-tile, .image-tile, img');
           
@@ -415,7 +552,6 @@
             }
           }
           
-          // Click verify button
           const verifyBtn = document.querySelector('.verify-button-holder button, #recaptcha-verify-button, button[type="submit"]');
           if (verifyBtn) {
             await delay(500);
