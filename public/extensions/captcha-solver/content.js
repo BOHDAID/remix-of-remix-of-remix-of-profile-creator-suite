@@ -82,28 +82,61 @@
   
   // Main detection loop
   function startDetection() {
+    // Initial check
+    checkAndSolve();
+    
+    // Periodic check
     setInterval(() => {
       if (!solverEnabled || isProcessing) return;
-
-      const captcha = detectCaptcha();
-      if (captcha) {
-        console.log('[AI Solver] CAPTCHA detected:', captcha.type);
-
-        // Notify background
-        chrome.runtime.sendMessage({
-          type: 'CAPTCHA_DETECTED',
-          data: {
-            type: captcha.type,
-            url: window.location.href
+      checkAndSolve();
+    }, SOLVER_CONFIG.checkInterval);
+    
+    // Also observe DOM changes for dynamically loaded CAPTCHAs
+    const observer = new MutationObserver((mutations) => {
+      if (!solverEnabled || isProcessing) return;
+      
+      for (const mutation of mutations) {
+        if (mutation.addedNodes.length > 0) {
+          // Check if any added nodes contain CAPTCHA
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1) { // Element node
+              const hasRecaptcha = node.querySelector?.('iframe[src*="recaptcha"]') || 
+                                   node.matches?.('iframe[src*="recaptcha"]') ||
+                                   node.querySelector?.('.g-recaptcha') ||
+                                   node.matches?.('.g-recaptcha');
+              if (hasRecaptcha) {
+                console.log('[AI Solver] CAPTCHA added to DOM');
+                setTimeout(checkAndSolve, 500);
+                break;
+              }
+            }
           }
-        });
-
-        // If auto-solve is on, start immediately (so we don't rely on sender.tab)
-        if (autoSolveEnabled) {
-          solveCaptcha({ type: captcha.type });
         }
       }
-    }, SOLVER_CONFIG.checkInterval);
+    });
+    
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+  
+  function checkAndSolve() {
+    const captcha = detectCaptcha();
+    if (captcha) {
+      console.log('[AI Solver] CAPTCHA detected:', captcha.type);
+
+      // Notify background
+      chrome.runtime.sendMessage({
+        type: 'CAPTCHA_DETECTED',
+        data: {
+          type: captcha.type,
+          url: window.location.href
+        }
+      });
+
+      // If auto-solve is on, start immediately
+      if (autoSolveEnabled) {
+        solveCaptcha({ type: captcha.type });
+      }
+    }
   }
   
   // Listen for solve commands / state updates
@@ -334,43 +367,120 @@
     // First, check if there's an image challenge visible
     const bframeIframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
     
-    if (bframeIframe) {
+    if (bframeIframe && bframeIframe.style.visibility !== 'hidden' && bframeIframe.offsetParent !== null) {
       console.log('[AI Solver] Image challenge detected, solving with AI...');
       return await solveRecaptchaImageChallenge();
     }
     
-    // Try to click the checkbox first
+    // Try to click the checkbox - find the anchor iframe and click on it
     const anchorIframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+    
     if (anchorIframe) {
-      try {
-        // Try clicking within the iframe (might fail due to cross-origin)
-        const checkbox = anchorIframe.contentDocument?.querySelector('.recaptcha-checkbox-border');
-        if (checkbox) {
-          await simulateHumanClick(checkbox);
-          await delay(2000);
+      console.log('[AI Solver] Found anchor iframe, attempting to click checkbox...');
+      
+      // Get iframe position and simulate click in the center (where checkbox is)
+      const rect = anchorIframe.getBoundingClientRect();
+      
+      if (rect.width > 0 && rect.height > 0) {
+        // The checkbox is typically at the left side of the iframe
+        const checkboxX = Math.round(rect.left + 28);
+        const checkboxY = Math.round(rect.top + rect.height / 2);
+        
+        console.log('[AI Solver] Clicking checkbox at position:', checkboxX, checkboxY);
+        
+        // Use background script's debugger API to simulate click
+        const clickResult = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            type: 'SIMULATE_CLICK',
+            x: checkboxX,
+            y: checkboxY
+          }, (response) => {
+            resolve(response || { success: false });
+          });
+        });
+        
+        if (clickResult.success) {
+          console.log('[AI Solver] Click simulated successfully via debugger API');
+        } else {
+          console.log('[AI Solver] Debugger click failed, trying fallback methods...');
           
-          // Check if challenge appeared
-          const newBframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
-          if (newBframe) {
-            return await solveRecaptchaImageChallenge();
-          }
+          // Fallback: Try native click events
+          const clickEvent = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            clientX: checkboxX,
+            clientY: checkboxY
+          });
+          anchorIframe.dispatchEvent(clickEvent);
+          anchorIframe.focus();
+        }
+        
+        // Wait for potential challenge to appear
+        await delay(2500);
+        
+        // Check if challenge appeared
+        const newBframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+        if (newBframe && newBframe.style.visibility !== 'hidden' && newBframe.offsetParent !== null) {
+          console.log('[AI Solver] Challenge appeared, solving...');
+          return await solveRecaptchaImageChallenge();
+        }
+        
+        // Check if already solved (checkbox might be checked now)
+        const responseTextarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+        if (responseTextarea && responseTextarea.value) {
+          console.log('[AI Solver] reCAPTCHA already solved!');
+          return true;
+        }
+      }
+    }
+    
+    // Alternative: Try clicking on the g-recaptcha div container
+    const gRecaptcha = document.querySelector('.g-recaptcha, #recaptcha');
+    if (gRecaptcha) {
+      console.log('[AI Solver] Trying to click g-recaptcha container...');
+      const rect = gRecaptcha.getBoundingClientRect();
+      
+      // Click near the checkbox position
+      const x = rect.left + 30;
+      const y = rect.top + rect.height / 2;
+      
+      // Use elementFromPoint to get the actual clickable element
+      const element = document.elementFromPoint(x, y);
+      if (element) {
+        console.log('[AI Solver] Found element at checkbox position:', element.tagName);
+        await simulateHumanClick(element);
+        await delay(2000);
+        
+        // Check for challenge
+        const bframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+        if (bframe && bframe.offsetParent !== null) {
+          return await solveRecaptchaImageChallenge();
+        }
+        
+        // Check if solved
+        const response = document.querySelector('textarea[name="g-recaptcha-response"]');
+        if (response && response.value) {
+          return true;
+        }
+      }
+    }
+    
+    // Last resort: Try grecaptcha API if available
+    if (typeof grecaptcha !== 'undefined') {
+      try {
+        console.log('[AI Solver] Trying grecaptcha API...');
+        const token = await grecaptcha.execute();
+        if (token) {
+          console.log('[AI Solver] Got token from grecaptcha.execute');
           return true;
         }
       } catch (e) {
-        console.log('[AI Solver] Cannot access iframe content (cross-origin)');
+        console.log('[AI Solver] grecaptcha.execute failed:', e.message);
       }
     }
     
-    // Alternative: Execute reCAPTCHA callback if available
-    if (typeof grecaptcha !== 'undefined') {
-      try {
-        const token = await grecaptcha.execute();
-        if (token) return true;
-      } catch (e) {
-        console.log('[AI Solver] grecaptcha.execute failed:', e);
-      }
-    }
-    
+    console.log('[AI Solver] Could not solve reCAPTCHA v2');
     return false;
   }
   
