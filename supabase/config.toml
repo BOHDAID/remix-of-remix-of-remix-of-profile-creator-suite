@@ -3,5 +3,8 @@ project_id = "yygquhqavbandcqkzzcn"
 [functions.solve-captcha]
 verify_jwt = false
 
+[functions.update-captcha-result]
+verify_jwt = false
+
 [functions.vision-analyze]
 verify_jwt = false
