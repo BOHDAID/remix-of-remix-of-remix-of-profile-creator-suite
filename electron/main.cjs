@@ -1238,7 +1238,6 @@ ipcMain.handle('get-running-profiles', () => {
 
 // Tile profile windows in grid, horizontal, or vertical layout
 ipcMain.handle('tile-profile-windows', async (event, layout) => {
-// tile-profile-windows uses the global exec with maxBuffer
   const { screen } = require('electron');
   const os = require('os');
   
@@ -1276,6 +1275,12 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
       rows = count;
       winWidth = screenWidth;
       winHeight = Math.floor(screenHeight / count);
+    } else {
+      // Default to grid
+      cols = Math.ceil(Math.sqrt(count));
+      rows = Math.ceil(count / cols);
+      winWidth = Math.floor(screenWidth / cols);
+      winHeight = Math.floor(screenHeight / rows);
     }
 
     // Get PIDs of running profiles
@@ -1290,100 +1295,55 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
       return { success: false, error: 'لا توجد نوافذ متاحة' };
     }
 
-    // Create PowerShell script file to avoid here-string issues
-    const psScript = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class Win32 {
-    [DllImport("user32.dll")]
-    public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
-    [DllImport("user32.dll")]
-    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-}
-"@
-
-$pids = @(${pids.join(',')})
-$cols = ${cols}
-$rows = ${rows}
-$winWidth = ${winWidth}
-$winHeight = ${winHeight}
-$screenX = ${screenX}
-$screenY = ${screenY}
-
-$windows = @()
-$null = [IntPtr]::Zero
-$hwnd = [Win32]::FindWindowEx($null, [IntPtr]::Zero, "Chrome_WidgetWin_1", $null)
-
-# Get all main Chrome windows belonging to our profile PIDs
-while ($hwnd -ne [IntPtr]::Zero) {
-    $processId = 0
-    [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
+    // Simple approach: use PowerShell one-liner per window
+    const results = [];
+    let index = 0;
     
-    # Check if this window belongs to one of our profile processes
-    foreach ($targetPid in $pids) {
-        if ($processId -eq $targetPid) {
-            $windows += @{ hwnd = $hwnd; pid = $processId }
-            break
-        }
-    }
-    $hwnd = [Win32]::FindWindowEx($null, $hwnd, "Chrome_WidgetWin_1", $null)
-}
-
-# Remove duplicate windows (keep first per PID - main window)
-$seenPids = @{}
-$uniqueWindows = @()
-foreach ($win in $windows) {
-    if (-not $seenPids.ContainsKey($win.pid)) {
-        $seenPids[$win.pid] = $true
-        $uniqueWindows += $win
-    }
-}
-$windows = $uniqueWindows
-
-$i = 0
-foreach ($win in $windows) {
-    $col = $i % $cols
-    $row = [Math]::Floor($i / $cols)
-    $x = $screenX + ($col * $winWidth)
-    $y = $screenY + ($row * $winHeight)
-    
-    [Win32]::ShowWindow($win.hwnd, 9) | Out-Null
-    [Win32]::MoveWindow($win.hwnd, $x, $y, $winWidth, $winHeight, $true) | Out-Null
-    $i++
-}
-`;
-
-    // Write script to temp file
-    const tempScriptPath = path.join(os.tmpdir(), 'tile-windows.ps1');
-    fs.writeFileSync(tempScriptPath, psScript, 'utf8');
-
-    return new Promise((resolve) => {
-      exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, { maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
-        // Clean up temp file
-        try { fs.unlinkSync(tempScriptPath); } catch (e) {}
-        
-        if (error) {
-          console.log('Tile error:', error);
-          console.log('stderr:', stderr);
-          resolve({ success: false, error: error.message });
-        } else {
-          resolve({ 
-            success: true, 
-            message: layout === 'grid' ? 'تم ترتيب النوافذ بشكل شبكي' : 
-                     layout === 'horizontal' ? 'تم ترتيب النوافذ أفقياً' : 'تم ترتيب النوافذ عمودياً'
+    for (const pid of pids) {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = screenX + (col * winWidth);
+      const y = screenY + (row * winHeight);
+      
+      // Use simpler PowerShell command
+      const cmd = `powershell -Command "$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p -and $p.MainWindowHandle) { Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class W { [DllImport(\\\"user32.dll\\\")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool r); [DllImport(\\\"user32.dll\\\")] public static extern bool ShowWindow(IntPtr h, int c); }'; [W]::ShowWindow($p.MainWindowHandle, 9); [W]::MoveWindow($p.MainWindowHandle, ${x}, ${y}, ${winWidth}, ${winHeight}, $true) }"`;
+      
+      try {
+        await new Promise((resolve, reject) => {
+          exec(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 5000 }, (error, stdout, stderr) => {
+            if (error) {
+              console.log(`Tile window ${pid} error:`, error.message);
+              reject(error);
+            } else {
+              resolve(true);
+            }
           });
-        }
-      });
-    });
+        });
+        results.push({ pid, success: true });
+      } catch (e) {
+        results.push({ pid, success: false, error: e.message });
+      }
+      
+      index++;
+    }
+    
+    const successCount = results.filter(r => r.success).length;
+    
+    if (successCount === 0) {
+      return { success: false, error: 'فشل ترتيب جميع النوافذ' };
+    }
+    
+    const message = layout === 'grid' ? 'تم ترتيب النوافذ بشكل شبكي' : 
+                   layout === 'horizontal' ? 'تم ترتيب النوافذ أفقياً' : 'تم ترتيب النوافذ عمودياً';
+    
+    return { 
+      success: true, 
+      message: `${message} (${successCount}/${pids.length})`
+    };
+    
   } catch (error) {
-    return { success: false, error: error.message };
+    console.error('Tile windows error:', error);
+    return { success: false, error: error.message || 'حدث خطأ غير متوقع' };
   }
 });
 
