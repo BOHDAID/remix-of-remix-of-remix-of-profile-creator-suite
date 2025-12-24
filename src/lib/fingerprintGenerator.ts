@@ -19,6 +19,7 @@ export interface GeneratedFingerprint extends FingerprintSettings {
   country: string;
 }
 
+// Re-adding missing constants for compatibility with IdentityDNAView and other components
 export const GPU_VENDORS = [
   'Google Inc. (NVIDIA)',
   'Google Inc. (AMD)',

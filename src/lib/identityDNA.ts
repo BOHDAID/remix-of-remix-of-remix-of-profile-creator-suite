@@ -197,7 +197,7 @@ function generateTraits(base?: FingerprintSettings): DNATraits {
       country: selectedLocale.country,
     },
     browser: {
-      userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
+      userAgent: base?.userAgent || `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
       platform: base?.platform || 'Win32',
       vendor: 'Google Inc.',
       doNotTrack: false,
@@ -389,5 +389,6 @@ export function dnaToFingerprint(dna: IdentityDNA): FingerprintSettings {
     webglVendor: dna.traits.webgl.vendor,
     webglRenderer: dna.traits.webgl.renderer,
     randomize: false,
+    userAgent: dna.traits.browser.userAgent
   };
 }
