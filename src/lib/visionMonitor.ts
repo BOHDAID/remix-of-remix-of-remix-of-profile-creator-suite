@@ -624,7 +624,8 @@ class AIVisionMonitor {
       
       if (captchaType) {
         // Solve CAPTCHA
-        const solved = await captchaSolver.solveCaptcha(profileId, captchaType);
+        const result = await captchaSolver.solveCaptcha(profileId, captchaType);
+        const solved = result.success;
         
         session.actionsPerformed++;
         this.stats.actionsPerformed++;
