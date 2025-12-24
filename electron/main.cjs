@@ -719,33 +719,41 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
   // Helper function to add extension if exists
   function addBuiltInExtension(folderName) {
     // Try multiple possible paths for the extension
+    const resourcesPath = process.resourcesPath || '';
+    const appPath = app.getAppPath();
+    
     const possiblePaths = [
+      // ASAR UNPACKED paths (production - highest priority)
+      path.join(resourcesPath, 'app.asar.unpacked', 'public', 'extensions', folderName),
       // Development paths
       path.join(__dirname, '..', 'public', 'extensions', folderName),
       path.join(process.cwd(), 'public', 'extensions', folderName),
       // Production paths
-      path.join(process.resourcesPath || '', 'public', 'extensions', folderName),
-      path.join(app.getAppPath(), 'public', 'extensions', folderName),
-      path.join(app.getAppPath(), 'dist', 'extensions', folderName),
-      // Packaged app paths
-      path.join(process.resourcesPath || '', 'app', 'public', 'extensions', folderName),
-      path.join(process.resourcesPath || '', 'app.asar.unpacked', 'public', 'extensions', folderName),
+      path.join(resourcesPath, 'public', 'extensions', folderName),
+      path.join(appPath, 'public', 'extensions', folderName),
+      path.join(appPath, 'dist', 'extensions', folderName),
+      // Alternative packaged app paths
+      path.join(resourcesPath, 'app', 'public', 'extensions', folderName),
     ];
     
     for (const extPath of possiblePaths) {
-      if (fs.existsSync(extPath)) {
-        // Verify manifest.json exists
-        const manifestPath = path.join(extPath, 'manifest.json');
-        if (fs.existsSync(manifestPath)) {
-          console.log(`[Extensions] ✓ Found ${folderName} at: ${extPath}`);
-          builtInExtensions.push(extPath);
-          return;
+      try {
+        if (fs.existsSync(extPath)) {
+          // Verify manifest.json exists
+          const manifestPath = path.join(extPath, 'manifest.json');
+          if (fs.existsSync(manifestPath)) {
+            console.log(`[Extensions] ✓ Found ${folderName} at: ${extPath}`);
+            builtInExtensions.push(extPath);
+            return true;
+          }
         }
+      } catch (e) {
+        // Skip inaccessible paths
       }
     }
     
-    console.warn(`[Extensions] ✗ Could not find ${folderName} in any path`);
-    console.warn('[Extensions] Searched paths:', possiblePaths);
+    console.warn(`[Extensions] ✗ Could not find ${folderName}`);
+    return false;
   }
   
   // Add all built-in extensions
@@ -1357,7 +1365,7 @@ foreach ($win in $windows) {
     fs.writeFileSync(tempScriptPath, psScript, 'utf8');
 
     return new Promise((resolve) => {
-      exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error, stdout, stderr) => {
+      exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, { maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
         // Clean up temp file
         try { fs.unlinkSync(tempScriptPath); } catch (e) {}
         
@@ -1439,7 +1447,7 @@ while ($hwnd -ne [IntPtr]::Zero) {
   fs.writeFileSync(tempScriptPath, psScript, 'utf8');
 
   return new Promise((resolve) => {
-    exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error) => {
+    exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, { maxBuffer: 50 * 1024 * 1024 }, (error) => {
       try { fs.unlinkSync(tempScriptPath); } catch (e) {}
       if (error) {
         console.log('Minimize error:', error);
@@ -1511,7 +1519,7 @@ while ($hwnd -ne [IntPtr]::Zero) {
   fs.writeFileSync(tempScriptPath, psScript, 'utf8');
 
   return new Promise((resolve) => {
-    exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error) => {
+    exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, { maxBuffer: 50 * 1024 * 1024 }, (error) => {
       try { fs.unlinkSync(tempScriptPath); } catch (e) {}
       if (error) {
         console.log('Restore error:', error);
@@ -1536,7 +1544,7 @@ ipcMain.handle('focus-profile', async (event, profileId) => {
       // Try to bring the window to front using PID
       const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool SetForegroundWindow(IntPtr hWnd); }'; $proc = Get-Process -Id ${browser.pid} -ErrorAction SilentlyContinue; if ($proc) { [Win32]::SetForegroundWindow($proc.MainWindowHandle) }"`;
       
-      exec(cmd, (error) => {
+      exec(cmd, { maxBuffer: 50 * 1024 * 1024 }, (error) => {
         if (error) {
           console.log('Focus error:', error);
         }
