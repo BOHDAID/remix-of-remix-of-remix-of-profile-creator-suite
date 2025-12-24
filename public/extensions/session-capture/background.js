@@ -35,43 +35,53 @@ function startAutoSync() {
 async function syncSessionsToApp() {
   try {
     const { sessions = [] } = await chrome.storage.local.get(['sessions']);
-    
-    // Store in a format the main app can read
+
     const syncData = {
       lastSync: new Date().toISOString(),
-      sessions: sessions,
+      sessions,
       source: 'bhd-session-capture-extension'
     };
-    
+
     // Method 1: Save to chrome.storage.local
-    await chrome.storage.local.set({ 
-      'bhd-synced-sessions': syncData 
+    await chrome.storage.local.set({
+      'bhd-synced-sessions': syncData
     });
-    
-    // Method 2: Try to inject into page localStorage (for web app access)
+
+    // Method 2: Inject into any tab that looks like the BHD web app
     try {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (activeTab && activeTab.id && activeTab.url) {
-        // Check if it's the BHD app
-        const url = new URL(activeTab.url);
-        if (url.hostname.includes('lovable') || url.hostname === 'localhost') {
-          await chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            func: (data) => {
-              try {
-                localStorage.setItem('bhd-synced-sessions', JSON.stringify(data));
-              } catch (e) {
-                console.error('Failed to sync sessions to app:', e);
-              }
-            },
-            args: [syncData]
-          });
-        }
-      }
-    } catch (e) {
-      // Ignore errors for tabs we can't access
+      const tabs = await chrome.tabs.query({});
+
+      await Promise.all(
+        tabs
+          .filter(t => t.id && t.url && /^https?:/i.test(t.url))
+          .map(async (t) => {
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: t.id },
+                func: (data) => {
+                  try {
+                    const author = document.querySelector('meta[name="author"]')?.getAttribute('content') || '';
+                    const title = document.title || '';
+                    const isBhdApp = author === 'Profile Manager Pro' || title.includes('Profile Manager Pro');
+                    if (!isBhdApp) return false;
+
+                    localStorage.setItem('bhd-synced-sessions', JSON.stringify(data));
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                },
+                args: [syncData]
+              });
+            } catch {
+              // Ignore tabs we can't access
+            }
+          })
+      );
+    } catch {
+      // Ignore tab query / injection issues
     }
-    
+
     console.log('[Session Capture] Synced', sessions.length, 'sessions');
   } catch (error) {
     console.error('[Session Capture] Sync error:', error);
@@ -136,18 +146,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Sync sessions to current page's localStorage
 async function syncToCurrentPage(tabId) {
   const { sessions = [] } = await chrome.storage.local.get(['sessions']);
-  
+
   const syncData = {
     lastSync: new Date().toISOString(),
-    sessions: sessions,
+    sessions,
     source: 'bhd-session-capture-extension'
   };
-  
+
   await chrome.scripting.executeScript({
     target: { tabId },
     func: (data) => {
+      const author = document.querySelector('meta[name="author"]')?.getAttribute('content') || '';
+      const title = document.title || '';
+      const isBhdApp = author === 'Profile Manager Pro' || title.includes('Profile Manager Pro');
+      if (!isBhdApp) return false;
+
       localStorage.setItem('bhd-synced-sessions', JSON.stringify(data));
       console.log('[BHD Extension] Synced', data.sessions.length, 'sessions to app');
+      return true;
     },
     args: [syncData]
   });
@@ -352,15 +368,11 @@ function maskValue(value) {
 
 // Listen for tab updates to auto-sync when BHD app is opened
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
+  if (changeInfo.status === 'complete' && tab.url && /^https?:/i.test(tab.url)) {
     try {
-      const url = new URL(tab.url);
-      if (url.hostname.includes('lovable') || url.hostname === 'localhost') {
-        // BHD app detected, sync sessions
-        await syncToCurrentPage(tabId);
-      }
-    } catch (e) {
-      // Ignore invalid URLs
+      await syncToCurrentPage(tabId);
+    } catch {
+      // Ignore if we can't sync to this page
     }
   }
 });
