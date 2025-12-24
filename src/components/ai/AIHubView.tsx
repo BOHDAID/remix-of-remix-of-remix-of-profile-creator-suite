@@ -994,7 +994,7 @@ export function AIHubView() {
                           </div>
                           <div className="p-2 bg-muted/30 rounded">
                             <p className="text-xs text-muted-foreground">CPU Cores</p>
-                            <p className="font-medium">{currentFingerprint.cpuCores}</p>
+                            <p className="font-medium">{currentFingerprint.hardwareConcurrency}</p>
                           </div>
                           <div className="p-2 bg-muted/30 rounded">
                             <p className="text-xs text-muted-foreground">Memory</p>

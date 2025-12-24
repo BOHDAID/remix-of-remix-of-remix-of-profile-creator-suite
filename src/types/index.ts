@@ -157,6 +157,9 @@ export interface FingerprintSettings {
   webglVendor: string;
   webglRenderer: string;
   
+  // Browser
+  userAgent?: string;
+  
   // Random
   randomize: boolean;
 }
