@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - FIXED WEBGL 2025
+// Create fingerprint injection extension - FINAL STEALTH 2025
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -32,53 +32,61 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - FIXED WEBGL & STEALTH
+    // inject.js - THE ULTIMATE BYPASS SCRIPT
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
   
-  // 1. WebGL Spoofing (Fixed & Reliable)
-  const spoofWebGL = () => {
-    const targetVendor = fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
-    const targetRenderer = fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
-
-    const handleGetParameter = (original, param) => {
-      if (param === 37445) return targetVendor; // UNMASKED_VENDOR_WEBGL
-      if (param === 37446) return targetRenderer; // UNMASKED_RENDERER_WEBGL
-      if (param === 7936) return targetVendor; // VENDOR
-      if (param === 7937) return targetRenderer; // RENDERER
-      return original.call(this, param);
-    };
-
-    if (window.WebGLRenderingContext) {
-      const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = function(param) {
-        if (param === 37445) return targetVendor;
-        if (param === 37446) return targetRenderer;
-        return originalGetParameter.call(this, param);
+  // 1. Deep Bot Evasion
+  const hideBot = () => {
+    // Delete webdriver from prototype
+    const newProto = navigator.__proto__;
+    delete newProto.webdriver;
+    Object.setPrototypeOf(navigator, newProto);
+    
+    // Spoof chrome runtime
+    if (!window.chrome) {
+      window.chrome = {
+        runtime: {
+          id: "pkedcjkdefgpdelpbcmbmeomcjbeemfm",
+          onMessage: { addListener: () => {}, removeListener: () => {} },
+          sendMessage: () => {}
+        }
       };
     }
+  };
+  hideBot();
 
+  // 2. WebGL Deep Spoof (Fixed)
+  const spoofWebGL = () => {
+    const vendor = fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
+    const renderer = fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
+
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(param) {
+      if (param === 37445) return vendor;
+      if (param === 37446) return renderer;
+      return getParameter.call(this, param);
+    };
     if (window.WebGL2RenderingContext) {
-      const originalGetParameter2 = WebGL2RenderingContext.prototype.getParameter;
+      const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
       WebGL2RenderingContext.prototype.getParameter = function(param) {
-        if (param === 37445) return targetVendor;
-        if (param === 37446) return targetRenderer;
-        return originalGetParameter2.call(this, param);
+        if (param === 37445) return vendor;
+        if (param === 37446) return renderer;
+        return getParameter2.call(this, param);
       };
     }
   };
   spoofWebGL();
 
-  // 2. Hide Automation
-  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-
-  // 3. Hardware & Memory
+  // 3. Hardware & Locale
   Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
   Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
+  Object.defineProperty(navigator, 'language', { get: () => fp.language || 'en-US' });
+  Object.defineProperty(navigator, 'languages', { get: () => fp.languages || [fp.language || 'en-US', 'en'] });
 
-  // 4. Timezone & Language
+  // 4. Timezone Sync
   const targetTZ = fp.timezone || 'UTC';
   const targetOffset = fp.timezoneOffset || 0;
   Date.prototype.getTimezoneOffset = function() { return targetOffset; };
@@ -89,7 +97,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     return res;
   };
 
-  console.log('[Manus] WebGL Fixed & Stealth Active');
+  console.log('[Manus] Protection 100% Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);

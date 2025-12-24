@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fingerprint & Bot Detection Test</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #eee; padding: 20px; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #333; }
+        .status { font-weight: bold; }
+        .green { color: #4caf50; }
+        .red { color: #f44336; }
+        pre { background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Fingerprint Test Page</h1>
+    
+    <div class="card">
+        <h2>1. Bot Detection</h2>
+        <p>Navigator.webdriver: <span id="webdriver" class="status"></span></p>
+        <p>Chrome Runtime: <span id="chrome-runtime" class="status"></span></p>
+    </div>
+
+    <div class="card">
+        <h2>2. WebGL Information</h2>
+        <p>Unmasked Vendor: <span id="webgl-vendor" class="status"></span></p>
+        <p>Unmasked Renderer: <span id="webgl-renderer" class="status"></span></p>
+    </div>
+
+    <div class="card">
+        <h2>3. Hardware & Locale</h2>
+        <p>Cores: <span id="cores" class="status"></span></p>
+        <p>Memory: <span id="memory" class="status"></span></p>
+        <p>Language: <span id="lang" class="status"></span></p>
+        <p>Timezone: <span id="tz" class="status"></span></p>
+    </div>
+
+    <script>
+        // 1. Bot Detection
+        const webdriver = navigator.webdriver;
+        const wdEl = document.getElementById('webdriver');
+        wdEl.textContent = webdriver === undefined ? 'Hidden (Success)' : (webdriver ? 'Detected (Fail)' : 'False (Success)');
+        wdEl.className = (webdriver === undefined || webdriver === false) ? 'status green' : 'status red';
+
+        const chromeRuntime = window.chrome && window.chrome.runtime;
+        const crEl = document.getElementById('chrome-runtime');
+        crEl.textContent = chromeRuntime ? 'Present (Success)' : 'Missing (Fail)';
+        crEl.className = chromeRuntime ? 'status green' : 'status red';
+
+        // 2. WebGL
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+            const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+            
+            document.getElementById('webgl-vendor').textContent = vendor;
+            document.getElementById('webgl-renderer').textContent = renderer;
+        } catch (e) {
+            document.getElementById('webgl-vendor').textContent = 'Error: ' + e.message;
+        }
+
+        // 3. Hardware
+        document.getElementById('cores').textContent = navigator.hardwareConcurrency;
+        document.getElementById('memory').textContent = navigator.deviceMemory + ' GB';
+        document.getElementById('lang').textContent = navigator.language;
+        document.getElementById('tz').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    </script>
+</body>
+</html>
