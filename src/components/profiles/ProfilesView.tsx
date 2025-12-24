@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Profile } from '@/types';
 import { ProfileCard } from './ProfileCard';
@@ -11,12 +11,18 @@ import { HorizontalScrollActions } from '@/components/ui/horizontal-scroll-actio
 import { 
   Plus, Search, Users, LayoutGrid, List, Play, Square, 
   CheckSquare, XSquare, Loader2, Grid3X3, Minimize2, 
-  Maximize2, Monitor, Download, Upload, Copy, Table2
+  Maximize2, Monitor, Download, Upload, Copy, Table2, ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { isElectron, getElectronAPI } from '@/lib/electron';
+import { isElectron, getElectronAPI, DisplayInfo } from '@/lib/electron';
 import { checkLicenseStatus } from '@/lib/licenseUtils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function ProfilesView() {
   const { profiles, updateProfile, addProfile, deleteProfile, extensions, settings, license, setActiveView } = useAppStore();
@@ -27,10 +33,23 @@ export function ProfilesView() {
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [launchingBatch, setLaunchingBatch] = useState(false);
+  const [displays, setDisplays] = useState<DisplayInfo[]>([]);
+  const [selectedDisplayIndex, setSelectedDisplayIndex] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const electronAPI = getElectronAPI();
   const licenseCheck = checkLicenseStatus(license, profiles.length);
+
+  // Fetch available displays on mount
+  useEffect(() => {
+    if (isElectron() && electronAPI?.getDisplays) {
+      electronAPI.getDisplays().then((d) => {
+        setDisplays(d);
+        const primaryIdx = d.findIndex((x) => x.isPrimary);
+        setSelectedDisplayIndex(primaryIdx >= 0 ? primaryIdx : 0);
+      }).catch(() => {});
+    }
+  }, [electronAPI]);
 
   const filteredProfiles = profiles.filter(p =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -192,9 +211,9 @@ export function ProfilesView() {
       return;
     }
     try {
-      const result = await electronAPI?.tileProfileWindows(layout);
+      const result = await electronAPI?.tileProfileWindows({ layout, displayIndex: selectedDisplayIndex });
       if (result?.success) {
-        toast.success('تم ترتيب النوافذ');
+        toast.success(result.message || 'تم ترتيب النوافذ');
       } else {
         toast.error(result?.error || 'فشل ترتيب النوافذ');
       }
@@ -425,6 +444,34 @@ export function ProfilesView() {
           <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 border border-success/20 rounded-lg">
             <Monitor className="w-4 h-4 text-success" />
             <span className="text-xs font-medium text-success">{runningCount}</span>
+            <div className="w-px h-4 bg-success/30" />
+
+            {/* Display Selector */}
+            {displays.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-success bg-success/10 rounded hover:bg-success/20 transition-colors"
+                    title="اختيار الشاشة"
+                  >
+                    {displays[selectedDisplayIndex]?.isPrimary ? 'رئيسية' : `شاشة ${selectedDisplayIndex + 1}`}
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[140px]">
+                  {displays.map((d, idx) => (
+                    <DropdownMenuItem
+                      key={d.id}
+                      onClick={() => setSelectedDisplayIndex(idx)}
+                      className={cn(selectedDisplayIndex === idx && 'bg-accent')}
+                    >
+                      {d.isPrimary ? `شاشة رئيسية (${d.width}×${d.height})` : `شاشة ${idx + 1} (${d.width}×${d.height})`}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
             <div className="w-px h-4 bg-success/30" />
             <button
               onClick={() => handleTileWindows('grid')}
