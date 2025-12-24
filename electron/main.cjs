@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - STEALTH 2025 VERSION
+// Create fingerprint injection extension - ULTIMATE STEALTH 2025
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -32,28 +32,94 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - THE ULTIMATE STEALTH SCRIPT
+    // inject.js - THE MOST ADVANCED STEALTH SCRIPT (2025)
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
+  const seed = fp.seed || Math.floor(Math.random() * 1000000);
   
-  // 1. CRITICAL: Hide Automation & Bot Traces
+  // Helper for consistent noise
+  const pseudoRandom = (s) => {
+    let t = s += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+
+  // 1. Hide Automation (Deep)
   const hideAutomation = () => {
     const newProto = navigator.__proto__;
     delete newProto.webdriver;
     navigator.__proto__ = newProto;
     
     // Hide common bot variables
-    const botProps = ['__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_function', 'domAutomation', 'domAutomationController'];
+    const botProps = ['__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_function', 'domAutomation', 'domAutomationController', '_phantom', 'callPhantom'];
     botProps.forEach(p => { try { delete window[p]; } catch(e){} });
+
+    // Spoof chrome runtime
+    if (!window.chrome) window.chrome = { runtime: {} };
   };
   hideAutomation();
 
-  // 2. CRITICAL: Timezone & Language Sync (JS Level)
+  // 2. WebGL Deep Spoofing (Extensions & Params)
+  const spoofWebGL = () => {
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(param) {
+      if (param === 37445) return fp.webglVendor || 'Google Inc. (NVIDIA)';
+      if (param === 37446) return fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
+      return getParameter.call(this, param);
+    };
+    if (window.WebGL2RenderingContext) WebGL2RenderingContext.prototype.getParameter = WebGLRenderingContext.prototype.getParameter;
+  };
+  spoofWebGL();
+
+  // 3. Client Rects & Fonts (Noise)
+  const spoofRects = () => {
+    const originalGetClientRects = Element.prototype.getClientRects;
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    
+    Element.prototype.getClientRects = function() {
+      const rects = originalGetClientRects.call(this);
+      const noise = (pseudoRandom(seed) - 0.5) * 0.0001;
+      for (let i = 0; i < rects.length; i++) {
+        rects[i].x += noise;
+        rects[i].y += noise;
+      }
+      return rects;
+    };
+
+    Element.prototype.getBoundingClientRect = function() {
+      const rect = originalGetBoundingClientRect.call(this);
+      const noise = (pseudoRandom(seed) - 0.5) * 0.0001;
+      return {
+        ...rect,
+        x: rect.x + noise,
+        y: rect.y + noise,
+        left: rect.left + noise,
+        top: rect.top + noise
+      };
+    };
+  };
+  spoofRects();
+
+  // 4. Audio Context (Noise)
+  const spoofAudio = () => {
+    const originalGetChannelData = AudioBuffer.prototype.getChannelData;
+    AudioBuffer.prototype.getChannelData = function() {
+      const data = originalGetChannelData.apply(this, arguments);
+      const noise = (pseudoRandom(seed) - 0.5) * 0.0000001;
+      for (let i = 0; i < data.length; i++) {
+        data[i] += noise;
+      }
+      return data;
+    };
+  };
+  spoofAudio();
+
+  // 5. Timezone & Language (Deep Sync)
   const syncLocale = () => {
-    // Force Timezone
-    const targetTZ = fp.timezone || 'Africa/Casablanca';
+    const targetTZ = fp.timezone || 'UTC';
     const targetOffset = fp.timezoneOffset || 0;
     
     Date.prototype.getTimezoneOffset = function() { return targetOffset; };
@@ -64,41 +130,12 @@ function createFingerprintScript(fingerprint, userDataDir) {
       return res;
     };
 
-    // Force Language
-    const targetLang = fp.language || 'en-US';
-    const targetLangs = fp.languages || [targetLang, 'en'];
-    Object.defineProperty(navigator, 'language', { get: () => targetLang });
-    Object.defineProperty(navigator, 'languages', { get: () => targetLangs });
+    Object.defineProperty(navigator, 'language', { get: () => fp.language || 'en-US' });
+    Object.defineProperty(navigator, 'languages', { get: () => fp.languages || ['en-US', 'en'] });
   };
   syncLocale();
 
-  // 3. Hardware & WebGL (Deep Spoof)
-  const spoofHardware = () => {
-    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
-    Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
-
-    const getParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(param) {
-      if (param === 37445) return fp.webglVendor || 'Google Inc. (NVIDIA)';
-      if (param === 37446) return fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
-      return getParameter.call(this, param);
-    };
-    if (window.WebGL2RenderingContext) WebGL2RenderingContext.prototype.getParameter = WebGLRenderingContext.prototype.getParameter;
-  };
-  spoofHardware();
-
-  // 4. Client Rects & Canvas (Noise)
-  const addNoise = () => {
-    const originalGetClientRects = Element.prototype.getClientRects;
-    Element.prototype.getClientRects = function() {
-      const rects = originalGetClientRects.call(this);
-      // Add tiny noise to rects to prevent fingerprinting
-      return rects; 
-    };
-  };
-  addNoise();
-
-  console.log('[Manus] Stealth Protection Active');
+  console.log('[Manus] Ultimate Stealth Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
@@ -130,7 +167,6 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
   const userDataDir = path.join(app.getPath('userData'), 'profiles', profileId);
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
 
-  // CRITICAL: Force Language and Timezone at Browser Level
   const args = [
     `--user-data-dir=${userDataDir}`,
     '--disable-blink-features=AutomationControlled',
@@ -148,11 +184,8 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
   const extDir = createFingerprintScript(fingerprint, userDataDir);
   if (extDir) args.push(`--load-extension=${extDir}`);
 
-  // CRITICAL: Set Environment Variables for Timezone
   const env = { ...process.env };
-  if (fingerprint?.timezone) {
-    env.TZ = fingerprint.timezone;
-  }
+  if (fingerprint?.timezone) env.TZ = fingerprint.timezone;
 
   const browser = spawn(chromiumPath, args, { detached: false, stdio: 'ignore', env });
   runningProfiles.set(profileId, browser);
