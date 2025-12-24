@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageBase64, captchaType } = await req.json();
+    const { imageBase64, captchaType, prompt } = await req.json();
     
     if (!imageBase64) {
       return new Response(
@@ -27,8 +27,55 @@ serve(async (req) => {
     }
 
     console.log(`Processing ${captchaType || 'unknown'} CAPTCHA...`);
+    console.log(`Prompt hint: ${prompt || 'none'}`);
 
-    // Use Gemini Pro for image analysis - it's the best for visual tasks
+    // Build the system prompt based on CAPTCHA type
+    let systemPrompt = '';
+    let userPrompt = '';
+
+    if (captchaType === 'recaptcha-image' || captchaType === 'image-selection') {
+      // For reCAPTCHA image selection challenges
+      systemPrompt = `You are an expert at analyzing images for CAPTCHA challenges. You will be shown a grid of images (usually 3x3 or 4x4) and need to identify which cells contain the target object.
+
+CRITICAL RULES:
+- Return ONLY comma-separated numbers representing grid positions (1-9 for 3x3, 1-16 for 4x4)
+- Grid numbering: 1=top-left, then left-to-right, top-to-bottom
+- For a 3x3 grid:
+  [1][2][3]
+  [4][5][6]
+  [7][8][9]
+- If no cells match, return "none"
+- Do NOT include any explanation, just the numbers
+- Be thorough - look at each cell carefully`;
+
+      userPrompt = prompt 
+        ? `Look at this image grid. Which cells contain: ${prompt}? Return only the position numbers.`
+        : 'Analyze this CAPTCHA grid. Identify which cells contain the target object shown in the challenge. Return position numbers only.';
+
+    } else if (captchaType === 'text') {
+      systemPrompt = `You are a CAPTCHA text reader. Your task is to read distorted text from CAPTCHA images.
+
+RULES:
+- Return ONLY the text you see, nothing else
+- Be case-sensitive
+- Include spaces if they are part of the text
+- If the CAPTCHA has multiple words, separate them with spaces
+- Never explain, just return the characters`;
+
+      userPrompt = 'Read and return ONLY the text/characters shown in this CAPTCHA image.';
+
+    } else {
+      // Generic image analysis
+      systemPrompt = `You are analyzing a CAPTCHA image. Determine what type it is and solve it.
+
+For text: Return only the text
+For image selection: Return comma-separated grid position numbers (1-9 or 1-16)
+For math: Return the numeric answer`;
+
+      userPrompt = prompt || 'Solve this CAPTCHA. Return only the answer.';
+    }
+
+    // Use Gemini Flash for faster response - it's excellent at visual tasks
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -36,27 +83,18 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
-            content: `You are a CAPTCHA solving assistant. Your task is to analyze CAPTCHA images and extract the text or solve the challenge.
-
-Rules:
-- For text CAPTCHAs: Return ONLY the characters/numbers you see, nothing else
-- For image selection CAPTCHAs: Return the positions (1-9 grid) of images matching the criteria
-- Be case-sensitive for text CAPTCHAs
-- If you cannot read the CAPTCHA clearly, return your best guess
-- Never explain, just return the answer`
+            content: systemPrompt
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: captchaType === 'image' 
-                  ? 'This is an image selection CAPTCHA. Identify which grid positions (1-9, left to right, top to bottom) contain the target objects. Return positions as comma-separated numbers.'
-                  : 'Read and return ONLY the text/characters shown in this CAPTCHA image. No explanation, just the text.'
+                text: userPrompt
               },
               {
                 type: 'image_url',
@@ -67,7 +105,7 @@ Rules:
             ]
           }
         ],
-        max_tokens: 50,
+        max_tokens: 100,
       }),
     });
 
@@ -95,13 +133,14 @@ Rules:
     const data = await response.json();
     const solution = data.choices?.[0]?.message?.content?.trim() || '';
 
-    console.log(`CAPTCHA solved: ${solution}`);
+    console.log(`CAPTCHA solution: ${solution}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         solution,
-        confidence: 0.85 // AI generally has good confidence
+        captchaType,
+        confidence: 0.9
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -49,10 +49,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_LEARNING_DATA':
       sendResponse(solverState.learningData);
       break;
+      
+    case 'CAPTURE_SCREEN':
+      // Capture the visible tab
+      handleScreenCapture(sender, message.rect).then(sendResponse);
+      return true; // Keep channel open for async response
   }
 
   return true;
 });
+
+// Handle screen capture for CAPTCHA solving
+async function handleScreenCapture(sender, rect) {
+  try {
+    const tabId = sender?.tab?.id;
+    if (!tabId) {
+      console.log('[Background] No tab ID for capture');
+      return { error: 'No tab ID' };
+    }
+    
+    // Capture the visible area of the tab
+    const dataUrl = await chrome.tabs.captureVisibleTab(sender.tab.windowId, {
+      format: 'png',
+      quality: 100
+    });
+    
+    console.log('[Background] Screen captured successfully');
+    
+    // If rect is provided, we could crop but browser APIs don't support that directly
+    // The content script will need to handle the full screenshot
+    return { 
+      success: true, 
+      imageBase64: dataUrl 
+    };
+  } catch (error) {
+    console.error('[Background] Screen capture failed:', error);
+    return { error: error.message };
+  }
+}
 
 async function broadcastStateToTabs() {
   try {
