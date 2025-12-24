@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - ULTIMATE STEALTH 2025
+// Create fingerprint injection extension - FIXED WEBGL 2025
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -32,110 +32,64 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - THE MOST ADVANCED STEALTH SCRIPT (2025)
+    // inject.js - FIXED WEBGL & STEALTH
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
-  const seed = fp.seed || Math.floor(Math.random() * 1000000);
   
-  // Helper for consistent noise
-  const pseudoRandom = (s) => {
-    let t = s += 0x6D2B79F5;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-
-  // 1. Hide Automation (Deep)
-  const hideAutomation = () => {
-    const newProto = navigator.__proto__;
-    delete newProto.webdriver;
-    navigator.__proto__ = newProto;
-    
-    // Hide common bot variables
-    const botProps = ['__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_function', 'domAutomation', 'domAutomationController', '_phantom', 'callPhantom'];
-    botProps.forEach(p => { try { delete window[p]; } catch(e){} });
-
-    // Spoof chrome runtime
-    if (!window.chrome) window.chrome = { runtime: {} };
-  };
-  hideAutomation();
-
-  // 2. WebGL Deep Spoofing (Extensions & Params)
+  // 1. WebGL Spoofing (Fixed & Reliable)
   const spoofWebGL = () => {
-    const getParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(param) {
-      if (param === 37445) return fp.webglVendor || 'Google Inc. (NVIDIA)';
-      if (param === 37446) return fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
-      return getParameter.call(this, param);
+    const targetVendor = fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
+    const targetRenderer = fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
+
+    const handleGetParameter = (original, param) => {
+      if (param === 37445) return targetVendor; // UNMASKED_VENDOR_WEBGL
+      if (param === 37446) return targetRenderer; // UNMASKED_RENDERER_WEBGL
+      if (param === 7936) return targetVendor; // VENDOR
+      if (param === 7937) return targetRenderer; // RENDERER
+      return original.call(this, param);
     };
-    if (window.WebGL2RenderingContext) WebGL2RenderingContext.prototype.getParameter = WebGLRenderingContext.prototype.getParameter;
+
+    if (window.WebGLRenderingContext) {
+      const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(param) {
+        if (param === 37445) return targetVendor;
+        if (param === 37446) return targetRenderer;
+        return originalGetParameter.call(this, param);
+      };
+    }
+
+    if (window.WebGL2RenderingContext) {
+      const originalGetParameter2 = WebGL2RenderingContext.prototype.getParameter;
+      WebGL2RenderingContext.prototype.getParameter = function(param) {
+        if (param === 37445) return targetVendor;
+        if (param === 37446) return targetRenderer;
+        return originalGetParameter2.call(this, param);
+      };
+    }
   };
   spoofWebGL();
 
-  // 3. Client Rects & Fonts (Noise)
-  const spoofRects = () => {
-    const originalGetClientRects = Element.prototype.getClientRects;
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    
-    Element.prototype.getClientRects = function() {
-      const rects = originalGetClientRects.call(this);
-      const noise = (pseudoRandom(seed) - 0.5) * 0.0001;
-      for (let i = 0; i < rects.length; i++) {
-        rects[i].x += noise;
-        rects[i].y += noise;
-      }
-      return rects;
-    };
+  // 2. Hide Automation
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-    Element.prototype.getBoundingClientRect = function() {
-      const rect = originalGetBoundingClientRect.call(this);
-      const noise = (pseudoRandom(seed) - 0.5) * 0.0001;
-      return {
-        ...rect,
-        x: rect.x + noise,
-        y: rect.y + noise,
-        left: rect.left + noise,
-        top: rect.top + noise
-      };
-    };
+  // 3. Hardware & Memory
+  Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
+  Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
+
+  // 4. Timezone & Language
+  const targetTZ = fp.timezone || 'UTC';
+  const targetOffset = fp.timezoneOffset || 0;
+  Date.prototype.getTimezoneOffset = function() { return targetOffset; };
+  const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+  Intl.DateTimeFormat.prototype.resolvedOptions = function() {
+    const res = originalResolvedOptions.call(this);
+    res.timeZone = targetTZ;
+    return res;
   };
-  spoofRects();
 
-  // 4. Audio Context (Noise)
-  const spoofAudio = () => {
-    const originalGetChannelData = AudioBuffer.prototype.getChannelData;
-    AudioBuffer.prototype.getChannelData = function() {
-      const data = originalGetChannelData.apply(this, arguments);
-      const noise = (pseudoRandom(seed) - 0.5) * 0.0000001;
-      for (let i = 0; i < data.length; i++) {
-        data[i] += noise;
-      }
-      return data;
-    };
-  };
-  spoofAudio();
-
-  // 5. Timezone & Language (Deep Sync)
-  const syncLocale = () => {
-    const targetTZ = fp.timezone || 'UTC';
-    const targetOffset = fp.timezoneOffset || 0;
-    
-    Date.prototype.getTimezoneOffset = function() { return targetOffset; };
-    const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
-    Intl.DateTimeFormat.prototype.resolvedOptions = function() {
-      const res = originalResolvedOptions.call(this);
-      res.timeZone = targetTZ;
-      return res;
-    };
-
-    Object.defineProperty(navigator, 'language', { get: () => fp.language || 'en-US' });
-    Object.defineProperty(navigator, 'languages', { get: () => fp.languages || ['en-US', 'en'] });
-  };
-  syncLocale();
-
-  console.log('[Manus] Ultimate Stealth Active');
+  console.log('[Manus] WebGL Fixed & Stealth Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
@@ -174,8 +128,7 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     '--no-default-browser-check',
     '--ignore-certificate-errors',
     `--lang=${fingerprint?.language || 'en-US'}`,
-    `--accept-lang=${fingerprint?.language || 'en-US'}`,
-    '--disable-features=IsolateOrigins,site-per-process'
+    `--accept-lang=${fingerprint?.language || 'en-US'}`
   ];
 
   if (userAgent) args.push(`--user-agent=${userAgent}`);
