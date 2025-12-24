@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - CLEAN & STABLE 2025
+// Create fingerprint injection extension - STABLE 2025
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -32,28 +32,22 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - CLEANED SYNTAX
+    // inject.js - CLEANED
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
   
-  // 1. Hide Automation
   try {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   } catch(e) {}
 
-  // 2. Disable WebRTC Leaks
   try {
     if (window.RTCPeerConnection) {
-      const originalCreateOffer = window.RTCPeerConnection.prototype.createOffer;
-      window.RTCPeerConnection.prototype.createOffer = function() {
-        return Promise.resolve();
-      };
+      window.RTCPeerConnection.prototype.createOffer = function() { return Promise.resolve(); };
     }
   } catch(e) {}
 
-  // 3. WebGL Spoofing
   try {
     const vendor = fp.webglVendor || 'Google Inc. (NVIDIA)';
     const renderer = fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
@@ -65,15 +59,12 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
   } catch(e) {}
 
-  // 4. Hardware & Locale
   try {
     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
     Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
-    
     const targetTZ = fp.timezone || 'UTC';
     const targetOffset = fp.timezoneOffset || 0;
     Date.prototype.getTimezoneOffset = function() { return targetOffset; };
-    
     const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
     Intl.DateTimeFormat.prototype.resolvedOptions = function() {
       const res = originalResolvedOptions.call(this);
@@ -81,8 +72,6 @@ function createFingerprintScript(fingerprint, userDataDir) {
       return res;
     };
   } catch(e) {}
-
-  console.log('[Manus] System Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
