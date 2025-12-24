@@ -1239,16 +1239,14 @@ ipcMain.handle('get-running-profiles', () => {
 // Tile profile windows in grid, horizontal, or vertical layout
 ipcMain.handle('tile-profile-windows', async (event, layout) => {
   const { screen } = require('electron');
-  const os = require('os');
-  
+
   const displays = screen.getAllDisplays();
   const primaryDisplay = displays[0];
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
   const { x: screenX, y: screenY } = primaryDisplay.workArea;
-  
-  const profileIds = Array.from(runningProfiles.keys());
-  const count = profileIds.length;
-  
+
+  const count = runningProfiles.size;
+
   if (count === 0) {
     return { success: false, error: 'لا توجد بروفايلات تعمل' };
   }
@@ -1257,9 +1255,48 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
     return { success: false, error: 'هذه الميزة متاحة فقط على Windows' };
   }
 
+  const runPowerShell = (script, timeoutMs = 8000) => {
+    return new Promise((resolve, reject) => {
+      const child = spawn(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+        { windowsHide: true }
+      );
+
+      let stdout = '';
+      let stderr = '';
+
+      const timer = setTimeout(() => {
+        try {
+          child.kill();
+        } catch {
+          // ignore
+        }
+        reject(new Error('PowerShell timeout'));
+      }, timeoutMs);
+
+      child.stdout?.on('data', (d) => (stdout += d.toString()));
+      child.stderr?.on('data', (d) => (stderr += d.toString()));
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0) {
+          resolve({ stdout, stderr });
+        } else {
+          reject(new Error((stderr || stdout || `PowerShell exit code ${code}`).trim()));
+        }
+      });
+    });
+  };
+
   try {
     let cols, rows, winWidth, winHeight;
-    
+
     if (layout === 'grid') {
       cols = Math.ceil(Math.sqrt(count));
       rows = Math.ceil(count / cols);
@@ -1285,62 +1322,81 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
 
     // Get PIDs of running profiles
     const pids = [];
-    for (const [id, browser] of runningProfiles.entries()) {
-      if (browser && browser.pid) {
-        pids.push(browser.pid);
-      }
+    for (const [, browser] of runningProfiles.entries()) {
+      if (browser && browser.pid) pids.push(browser.pid);
     }
 
     if (pids.length === 0) {
       return { success: false, error: 'لا توجد نوافذ متاحة' };
     }
 
-    // Simple approach: use PowerShell one-liner per window
     const results = [];
-    let index = 0;
-    
-    for (const pid of pids) {
+
+    for (let index = 0; index < pids.length; index++) {
+      const pid = pids[index];
       const col = index % cols;
       const row = Math.floor(index / cols);
-      const x = screenX + (col * winWidth);
-      const y = screenY + (row * winHeight);
-      
-      // Use simpler PowerShell command
-      const cmd = `powershell -Command "$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p -and $p.MainWindowHandle) { Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class W { [DllImport(\\\"user32.dll\\\")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool r); [DllImport(\\\"user32.dll\\\")] public static extern bool ShowWindow(IntPtr h, int c); }'; [W]::ShowWindow($p.MainWindowHandle, 9); [W]::MoveWindow($p.MainWindowHandle, ${x}, ${y}, ${winWidth}, ${winHeight}, $true) }"`;
-      
+      const x = screenX + col * winWidth;
+      const y = screenY + row * winHeight;
+
+      const psScript = `
+$ErrorActionPreference = 'Stop'
+$pid = ${pid}
+$x = ${x}
+$y = ${y}
+$w = ${winWidth}
+$h = ${winHeight}
+
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class Win32 {
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+'@
+
+for ($i = 0; $i -lt 3; $i++) {
+  try {
+    $p = Get-Process -Id $pid -ErrorAction Stop
+    if (-not $p.MainWindowHandle -or $p.MainWindowHandle -eq 0) { throw 'NoMainWindowHandle' }
+    [Win32]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
+    $ok = [Win32]::MoveWindow($p.MainWindowHandle, $x, $y, $w, $h, $true)
+    if (-not $ok) { throw 'MoveWindowFailed' }
+    exit 0
+  } catch {
+    if ($i -eq 2) { throw }
+    Start-Sleep -Milliseconds 250
+  }
+}
+`;
+
       try {
-        await new Promise((resolve, reject) => {
-          exec(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 5000 }, (error, stdout, stderr) => {
-            if (error) {
-              console.log(`Tile window ${pid} error:`, error.message);
-              reject(error);
-            } else {
-              resolve(true);
-            }
-          });
-        });
+        await runPowerShell(psScript);
         results.push({ pid, success: true });
       } catch (e) {
         results.push({ pid, success: false, error: e.message });
       }
-      
-      index++;
     }
-    
-    const successCount = results.filter(r => r.success).length;
-    
+
+    const successCount = results.filter((r) => r.success).length;
+
     if (successCount === 0) {
-      return { success: false, error: 'فشل ترتيب جميع النوافذ' };
+      const firstErr = results.find((r) => !r.success)?.error;
+      return { success: false, error: firstErr ? `فشل ترتيب جميع النوافذ: ${firstErr}` : 'فشل ترتيب جميع النوافذ' };
     }
-    
-    const message = layout === 'grid' ? 'تم ترتيب النوافذ بشكل شبكي' : 
-                   layout === 'horizontal' ? 'تم ترتيب النوافذ أفقياً' : 'تم ترتيب النوافذ عمودياً';
-    
-    return { 
-      success: true, 
-      message: `${message} (${successCount}/${pids.length})`
+
+    const message =
+      layout === 'grid'
+        ? 'تم ترتيب النوافذ بشكل شبكي'
+        : layout === 'horizontal'
+          ? 'تم ترتيب النوافذ أفقياً'
+          : 'تم ترتيب النوافذ عمودياً';
+
+    return {
+      success: true,
+      message: `${message} (${successCount}/${pids.length})`,
     };
-    
   } catch (error) {
     console.error('Tile windows error:', error);
     return { success: false, error: error.message || 'حدث خطأ غير متوقع' };
