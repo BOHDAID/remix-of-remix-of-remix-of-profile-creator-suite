@@ -26,6 +26,7 @@ export interface GeneratedFingerprint {
   cookieEnabled: boolean;
   maxTouchPoints: number;
   country: string;
+  confidence: number;
 }
 
 export const GPU_DATA = {
@@ -48,8 +49,15 @@ export const REGION_CONFIG: Record<string, any> = {
   'UK': { lang: 'en-GB', langs: ['en-GB', 'en'], tz: 'Europe/London', offset: 0, platform: 'Win32' },
 };
 
+interface FingerprintOptions {
+  os?: string;
+  browser?: string;
+  country?: string;
+}
+
 // Main generation function
-export function generateFingerprint(country: string = 'US'): GeneratedFingerprint {
+export function generateFingerprint(options?: string | FingerprintOptions): GeneratedFingerprint {
+  const country = typeof options === 'string' ? options : options?.country || 'US';
   const config = REGION_CONFIG[country] || REGION_CONFIG['US'];
   const gpu = country === 'US' ? GPU_DATA.NVIDIA_HIGH : GPU_DATA.NVIDIA_HIGH; 
   const seed = Math.floor(Math.random() * 1000000);
@@ -78,7 +86,8 @@ export function generateFingerprint(country: string = 'US'): GeneratedFingerprin
     doNotTrack: '1',
     cookieEnabled: true,
     maxTouchPoints: 0,
-    country
+    country,
+    confidence: 100
   };
 }
 

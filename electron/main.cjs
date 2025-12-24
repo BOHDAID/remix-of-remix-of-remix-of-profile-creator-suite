@@ -1238,9 +1238,6 @@ ipcMain.handle('tile-profile-windows', async (event, layout) => {
   const primaryDisplay = displays[0];
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
   const { x: screenX, y: screenY } = primaryDisplay.workArea;
-  const primaryDisplay = displays[0];
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  const { x: screenX, y: screenY } = primaryDisplay.workArea;
   
   const profileIds = Array.from(runningProfiles.keys());
   const count = profileIds.length;
