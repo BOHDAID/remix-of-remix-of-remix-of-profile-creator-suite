@@ -1,25 +1,16 @@
 // Ultimate Fingerprint Generator - 2025 Undetectable Edition
 // Ensures 100% consistency between Location, Language, Timezone, and Hardware
 
-export interface GeneratedFingerprint {
+import { FingerprintSettings } from '@/types';
+
+export interface GeneratedFingerprint extends FingerprintSettings {
   id: string;
   seed: number;
   os: string;
   browser: string;
   userAgent: string;
-  platform: string;
-  language: string;
-  languages: string[];
-  timezone: string;
   timezoneOffset: number;
-  webglVendor: string;
-  webglRenderer: string;
   webglParams: any;
-  hardwareConcurrency: number;
-  deviceMemory: number;
-  screenWidth: number;
-  screenHeight: number;
-  pixelRatio: number;
   canvasNoise: number;
   audioNoise: number;
   doNotTrack: string;
@@ -28,7 +19,6 @@ export interface GeneratedFingerprint {
   country: string;
 }
 
-// Re-adding missing constants for compatibility with IdentityDNAView and other components
 export const GPU_VENDORS = [
   'Google Inc. (NVIDIA)',
   'Google Inc. (AMD)',
@@ -109,6 +99,12 @@ export function generateFingerprint(country: string = 'US'): GeneratedFingerprin
     screenWidth: 1920,
     screenHeight: 1080,
     pixelRatio: 1,
+    colorDepth: 24,
+    gpu: gpu.renderer,
+    gpuVendor: gpu.vendor,
+    cpu: 'Intel Core i9',
+    cpuCores: 16,
+    randomize: false,
     canvasNoise: 0.0001,
     audioNoise: 0.00001,
     doNotTrack: '1',
