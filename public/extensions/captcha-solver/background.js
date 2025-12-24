@@ -54,6 +54,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Capture the visible tab
       handleScreenCapture(sender, message.rect).then(sendResponse);
       return true; // Keep channel open for async response
+      
+    case 'SIMULATE_CLICK':
+      // Simulate click using debugger API
+      handleSimulateClick(sender, message.x, message.y).then(sendResponse);
+      return true;
   }
 
   return true;
@@ -85,6 +90,52 @@ async function handleScreenCapture(sender, rect) {
   } catch (error) {
     console.error('[Background] Screen capture failed:', error);
     return { error: error.message };
+  }
+}
+
+// Simulate click using Chrome Debugger API (works on iframes)
+async function handleSimulateClick(sender, x, y) {
+  const tabId = sender?.tab?.id;
+  if (!tabId) {
+    return { success: false, error: 'No tab ID' };
+  }
+  
+  try {
+    // Attach debugger
+    await chrome.debugger.attach({ tabId }, '1.3');
+    
+    // Simulate mouse press
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: x,
+      y: y,
+      button: 'left',
+      clickCount: 1
+    });
+    
+    // Small delay
+    await new Promise(r => setTimeout(r, 50));
+    
+    // Simulate mouse release
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: x,
+      y: y,
+      button: 'left',
+      clickCount: 1
+    });
+    
+    // Detach debugger
+    await chrome.debugger.detach({ tabId });
+    
+    console.log('[Background] Simulated click at', x, y);
+    return { success: true };
+  } catch (error) {
+    console.error('[Background] Click simulation failed:', error);
+    try {
+      await chrome.debugger.detach({ tabId });
+    } catch {}
+    return { success: false, error: error.message };
   }
 }
 
