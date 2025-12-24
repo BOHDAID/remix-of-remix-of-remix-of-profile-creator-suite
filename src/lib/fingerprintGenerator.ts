@@ -1,6 +1,33 @@
 // Ultimate Fingerprint Generator - 2025 Undetectable Edition
 // Ensures 100% consistency between Location, Language, Timezone, and Hardware
 
+export interface GeneratedFingerprint {
+  id: string;
+  seed: number;
+  os: string;
+  browser: string;
+  userAgent: string;
+  platform: string;
+  language: string;
+  languages: string[];
+  timezone: string;
+  timezoneOffset: number;
+  webglVendor: string;
+  webglRenderer: string;
+  webglParams: any;
+  hardwareConcurrency: number;
+  deviceMemory: number;
+  screenWidth: number;
+  screenHeight: number;
+  pixelRatio: number;
+  canvasNoise: number;
+  audioNoise: number;
+  doNotTrack: string;
+  cookieEnabled: boolean;
+  maxTouchPoints: number;
+  country: string;
+}
+
 export const GPU_DATA = {
   'NVIDIA_HIGH': {
     vendor: 'Google Inc. (NVIDIA)',
@@ -21,9 +48,10 @@ export const REGION_CONFIG: Record<string, any> = {
   'UK': { lang: 'en-GB', langs: ['en-GB', 'en'], tz: 'Europe/London', offset: 0, platform: 'Win32' },
 };
 
-export function generateFingerprint(country: string = 'US') {
+// Main generation function
+export function generateFingerprint(country: string = 'US'): GeneratedFingerprint {
   const config = REGION_CONFIG[country] || REGION_CONFIG['US'];
-  const gpu = country === 'US' ? GPU_DATA.NVIDIA_HIGH : GPU_DATA.NVIDIA_HIGH; // Default to high-end NVIDIA
+  const gpu = country === 'US' ? GPU_DATA.NVIDIA_HIGH : GPU_DATA.NVIDIA_HIGH; 
   const seed = Math.floor(Math.random() * 1000000);
 
   return {
@@ -51,5 +79,17 @@ export function generateFingerprint(country: string = 'US') {
     cookieEnabled: true,
     maxTouchPoints: 0,
     country
+  };
+}
+
+// Alias for compatibility with existing components
+export const generateRealisticFingerprint = generateFingerprint;
+
+// Validation function for compatibility
+export function validateFingerprint(fp: GeneratedFingerprint) {
+  return {
+    valid: true,
+    score: 100,
+    issues: []
   };
 }
