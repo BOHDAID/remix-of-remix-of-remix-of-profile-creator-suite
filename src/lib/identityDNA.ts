@@ -178,7 +178,7 @@ function generateTraits(base?: FingerprintSettings): DNATraits {
   return {
     hardware: {
       gpuVendor: base?.gpuVendor || selectedGpu.vendor,
-      gpuRenderer: base?.gpu || selectedGpu.renderer.split(',')[1]?.trim() || 'Unknown',
+      gpuRenderer: base?.gpu || selectedGpu.renderer,
       cpuCores: base?.cpuCores || [4, 6, 8, 12, 16][Math.floor(Math.random() * 5)],
       deviceMemory: base?.deviceMemory || [4, 8, 16, 32][Math.floor(Math.random() * 4)],
       maxTouchPoints: 0,
@@ -374,7 +374,7 @@ export function dnaToFingerprint(dna: IdentityDNA): FingerprintSettings {
   return {
     gpu: dna.traits.hardware.gpuRenderer,
     gpuVendor: dna.traits.hardware.gpuVendor,
-    cpu: 'Intel Core',
+    cpu: 'Intel Core i9',
     cpuCores: dna.traits.hardware.cpuCores,
     deviceMemory: dna.traits.hardware.deviceMemory,
     screenWidth: dna.traits.screen.width,
