@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - FINAL STEALTH 2025
+// Create fingerprint injection extension - THE UNSTOPPABLE 2025 EDITION
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -20,7 +20,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     
     const manifest = {
       manifest_version: 3,
-      name: "System Core",
+      name: "System Kernel",
       version: "1.0",
       content_scripts: [{
         matches: ["<all_urls>"],
@@ -32,72 +32,73 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - THE ULTIMATE BYPASS SCRIPT
+    // inject.js - THE ATOMIC STEALTH SCRIPT
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
   
-  // 1. Deep Bot Evasion
-  const hideBot = () => {
-    // Delete webdriver from prototype
-    const newProto = navigator.__proto__;
-    delete newProto.webdriver;
-    Object.setPrototypeOf(navigator, newProto);
-    
-    // Spoof chrome runtime
-    if (!window.chrome) {
-      window.chrome = {
-        runtime: {
-          id: "pkedcjkdefgpdelpbcmbmeomcjbeemfm",
-          onMessage: { addListener: () => {}, removeListener: () => {} },
-          sendMessage: () => {}
-        }
-      };
+  // --- 1. ATOMIC BOT EVASION ---
+  // Completely wipe webdriver from the universe
+  const hideWebDriver = () => {
+    const proto = Navigator.prototype;
+    const originalDescriptor = Object.getOwnPropertyDescriptor(proto, 'webdriver');
+    if (originalDescriptor) {
+      Object.defineProperty(proto, 'webdriver', {
+        get: () => undefined,
+        enumerable: true,
+        configurable: true
+      });
     }
   };
-  hideBot();
+  hideWebDriver();
 
-  // 2. WebGL Deep Spoof (Fixed)
+  // --- 2. PERFECT WEBGL SPOOFING ---
   const spoofWebGL = () => {
-    const vendor = fp.webglVendor || fp.gpuVendor || 'Google Inc. (NVIDIA)';
-    const renderer = fp.webglRenderer || fp.gpu || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
+    const vendor = fp.webglVendor || 'Google Inc. (NVIDIA)';
+    const renderer = fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
 
-    const getParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(param) {
-      if (param === 37445) return vendor;
-      if (param === 37446) return renderer;
-      return getParameter.call(this, param);
-    };
-    if (window.WebGL2RenderingContext) {
-      const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-      WebGL2RenderingContext.prototype.getParameter = function(param) {
+    const proxyHandler = {
+      apply: function(target, thisArg, argumentsList) {
+        const param = argumentsList[0];
         if (param === 37445) return vendor;
         if (param === 37446) return renderer;
-        return getParameter2.call(this, param);
-      };
+        if (param === 7936) return vendor;
+        if (param === 7937) return renderer;
+        return target.apply(thisArg, argumentsList);
+      }
+    };
+
+    if (window.WebGLRenderingContext) {
+      WebGLRenderingContext.prototype.getParameter = new Proxy(WebGLRenderingContext.prototype.getParameter, proxyHandler);
+    }
+    if (window.WebGL2RenderingContext) {
+      WebGL2RenderingContext.prototype.getParameter = new Proxy(WebGL2RenderingContext.prototype.getParameter, proxyHandler);
     }
   };
   spoofWebGL();
 
-  // 3. Hardware & Locale
+  // --- 3. HARDWARE & MEMORY SYNC ---
   Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
   Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
-  Object.defineProperty(navigator, 'language', { get: () => fp.language || 'en-US' });
-  Object.defineProperty(navigator, 'languages', { get: () => fp.languages || [fp.language || 'en-US', 'en'] });
 
-  // 4. Timezone Sync
+  // --- 4. LOCALE & TIMEZONE SYNC ---
   const targetTZ = fp.timezone || 'UTC';
   const targetOffset = fp.timezoneOffset || 0;
   Date.prototype.getTimezoneOffset = function() { return targetOffset; };
+  
   const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
   Intl.DateTimeFormat.prototype.resolvedOptions = function() {
     const res = originalResolvedOptions.call(this);
-    res.timeZone = targetTZ;
+    Object.defineProperty(res, 'timeZone', { get: () => targetTZ });
     return res;
   };
 
-  console.log('[Manus] Protection 100% Active');
+  // --- 5. HIDE ELECTRON TRACES ---
+  delete window.electron;
+  delete window.ipcRenderer;
+
+  console.log('%c [System] Kernel Protection Active ', 'background: #222; color: #bada55');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
@@ -136,7 +137,8 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     '--no-default-browser-check',
     '--ignore-certificate-errors',
     `--lang=${fingerprint?.language || 'en-US'}`,
-    `--accept-lang=${fingerprint?.language || 'en-US'}`
+    `--accept-lang=${fingerprint?.language || 'en-US'}`,
+    '--disable-features=IsolateOrigins,site-per-process'
   ];
 
   if (userAgent) args.push(`--user-agent=${userAgent}`);
