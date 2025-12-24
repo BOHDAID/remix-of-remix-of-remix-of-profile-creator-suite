@@ -1,8 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, screen, session, desktopCapturer } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, exec: execRaw } = require('child_process');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
+
+// Wrapper for exec with increased maxBuffer to prevent "stderr maxBuffer length exceeded" errors
+const exec = (command, callback) => {
+  return execRaw(command, { maxBuffer: 50 * 1024 * 1024 }, callback);
+};
 
 let mainWindow;
 // Store running browser processes by profile ID
@@ -1225,13 +1230,14 @@ ipcMain.handle('get-running-profiles', () => {
 
 // Tile profile windows in grid, horizontal, or vertical layout
 ipcMain.handle('tile-profile-windows', async (event, layout) => {
+// tile-profile-windows uses the global exec with maxBuffer
   const { screen } = require('electron');
-  const { exec } = require('child_process');
-  const fs = require('fs');
-  const path = require('path');
   const os = require('os');
   
   const displays = screen.getAllDisplays();
+  const primaryDisplay = displays[0];
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  const { x: screenX, y: screenY } = primaryDisplay.workArea;
   const primaryDisplay = displays[0];
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
   const { x: screenX, y: screenY } = primaryDisplay.workArea;
@@ -1382,9 +1388,7 @@ ipcMain.handle('minimize-all-profiles', async () => {
     return { success: false, error: 'هذه الميزة متاحة فقط على Windows' };
   }
 
-  const { exec } = require('child_process');
-  const fs = require('fs');
-  const path = require('path');
+  // Uses global exec with maxBuffer
   const os = require('os');
 
   // Get PIDs of only our running profiles
@@ -1456,9 +1460,7 @@ ipcMain.handle('restore-all-profiles', async () => {
     return { success: false, error: 'هذه الميزة متاحة فقط على Windows' };
   }
 
-  const { exec } = require('child_process');
-  const fs = require('fs');
-  const path = require('path');
+  // Uses global exec with maxBuffer
   const os = require('os');
 
   // Get PIDs of only our running profiles
@@ -1531,9 +1533,8 @@ ipcMain.handle('focus-profile', async (event, profileId) => {
     return;
   }
   
+  // Uses global exec with maxBuffer
   if (process.platform === 'win32') {
-    const { exec } = require('child_process');
-    
     return new Promise((resolve) => {
       // Try to bring the window to front using PID
       const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\\"user32.dll\\")] public static extern bool SetForegroundWindow(IntPtr hWnd); }'; $proc = Get-Process -Id ${browser.pid} -ErrorAction SilentlyContinue; if ($proc) { [Win32]::SetForegroundWindow($proc.MainWindowHandle) }"`;
