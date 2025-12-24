@@ -14,7 +14,165 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      captcha_learning: {
+        Row: {
+          attempt_count: number | null
+          captcha_type: string
+          confidence: number | null
+          created_at: string
+          id: string
+          image_hash: string | null
+          prompt: string | null
+          site_domain: string | null
+          solution: string
+          updated_at: string
+          was_correct: boolean
+        }
+        Insert: {
+          attempt_count?: number | null
+          captcha_type: string
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          image_hash?: string | null
+          prompt?: string | null
+          site_domain?: string | null
+          solution: string
+          updated_at?: string
+          was_correct?: boolean
+        }
+        Update: {
+          attempt_count?: number | null
+          captcha_type?: string
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          image_hash?: string | null
+          prompt?: string | null
+          site_domain?: string | null
+          solution?: string
+          updated_at?: string
+          was_correct?: boolean
+        }
+        Relationships: []
+      }
+      saved_credentials: {
+        Row: {
+          auto_login: boolean | null
+          created_at: string
+          custom_data: Json | null
+          domain: string
+          email: string | null
+          encrypted_password: string | null
+          id: string
+          last_used: string | null
+          login_url: string | null
+          profile_id: string
+          selectors: Json | null
+          site_name: string
+          two_factor_enabled: boolean | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          auto_login?: boolean | null
+          created_at?: string
+          custom_data?: Json | null
+          domain: string
+          email?: string | null
+          encrypted_password?: string | null
+          id?: string
+          last_used?: string | null
+          login_url?: string | null
+          profile_id: string
+          selectors?: Json | null
+          site_name: string
+          two_factor_enabled?: boolean | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          auto_login?: boolean | null
+          created_at?: string
+          custom_data?: Json | null
+          domain?: string
+          email?: string | null
+          encrypted_password?: string | null
+          id?: string
+          last_used?: string | null
+          login_url?: string | null
+          profile_id?: string
+          selectors?: Json | null
+          site_name?: string
+          two_factor_enabled?: boolean | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      saved_sessions: {
+        Row: {
+          captured_at: string
+          cookies: Json | null
+          created_at: string
+          domain: string
+          expires_at: string | null
+          full_url: string | null
+          headers: Json | null
+          id: string
+          last_used: string | null
+          local_storage: Json | null
+          login_state: string | null
+          metadata: Json | null
+          profile_id: string
+          session_storage: Json | null
+          site_name: string
+          status: string | null
+          tokens: Json | null
+          updated_at: string
+        }
+        Insert: {
+          captured_at?: string
+          cookies?: Json | null
+          created_at?: string
+          domain: string
+          expires_at?: string | null
+          full_url?: string | null
+          headers?: Json | null
+          id?: string
+          last_used?: string | null
+          local_storage?: Json | null
+          login_state?: string | null
+          metadata?: Json | null
+          profile_id: string
+          session_storage?: Json | null
+          site_name: string
+          status?: string | null
+          tokens?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          captured_at?: string
+          cookies?: Json | null
+          created_at?: string
+          domain?: string
+          expires_at?: string | null
+          full_url?: string | null
+          headers?: Json | null
+          id?: string
+          last_used?: string | null
+          local_storage?: Json | null
+          login_state?: string | null
+          metadata?: Json | null
+          profile_id?: string
+          session_storage?: Json | null
+          site_name?: string
+          status?: string | null
+          tokens?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

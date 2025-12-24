@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageBase64, captchaType, prompt } = await req.json();
+    const { imageBase64, captchaType, prompt, siteDomain, recordLearning } = await req.json();
     
     if (!imageBase64) {
       return new Response(
@@ -28,6 +29,28 @@ serve(async (req) => {
 
     console.log(`Processing ${captchaType || 'unknown'} CAPTCHA...`);
     console.log(`Prompt hint: ${prompt || 'none'}`);
+
+    // Create Supabase client for learning storage
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Check for similar successful solutions in learning database
+    let learnedHint = '';
+    if (prompt) {
+      const { data: learningData } = await supabase
+        .from('captcha_learning')
+        .select('solution, prompt')
+        .eq('was_correct', true)
+        .ilike('prompt', `%${prompt}%`)
+        .limit(5);
+      
+      if (learningData && learningData.length > 0) {
+        const successfulSolutions = learningData.map(d => d.solution).join(', ');
+        learnedHint = `\nBased on previous successful solutions for similar prompts, common answers were: ${successfulSolutions}`;
+        console.log('Found learned patterns:', successfulSolutions);
+      }
+    }
 
     // Build the system prompt based on CAPTCHA type
     let systemPrompt = '';
@@ -46,7 +69,8 @@ CRITICAL RULES:
   [7][8][9]
 - If no cells match, return "none"
 - Do NOT include any explanation, just the numbers
-- Be thorough - look at each cell carefully`;
+- Be thorough - look at each cell carefully
+- Include ALL cells that contain ANY part of the target object${learnedHint}`;
 
       userPrompt = prompt 
         ? `Look at this image grid. Which cells contain: ${prompt}? Return only the position numbers.`
@@ -60,7 +84,7 @@ RULES:
 - Be case-sensitive
 - Include spaces if they are part of the text
 - If the CAPTCHA has multiple words, separate them with spaces
-- Never explain, just return the characters`;
+- Never explain, just return the characters${learnedHint}`;
 
       userPrompt = 'Read and return ONLY the text/characters shown in this CAPTCHA image.';
 
@@ -70,7 +94,7 @@ RULES:
 
 For text: Return only the text
 For image selection: Return comma-separated grid position numbers (1-9 or 1-16)
-For math: Return the numeric answer`;
+For math: Return the numeric answer${learnedHint}`;
 
       userPrompt = prompt || 'Solve this CAPTCHA. Return only the answer.';
     }
@@ -134,6 +158,32 @@ For math: Return the numeric answer`;
     const solution = data.choices?.[0]?.message?.content?.trim() || '';
 
     console.log(`CAPTCHA solution: ${solution}`);
+
+    // Record the attempt in learning database
+    if (recordLearning !== false) {
+      const imageHash = imageBase64.slice(0, 100).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+      
+      const { data: insertedData, error: insertError } = await supabase
+        .from('captcha_learning')
+        .insert({
+          captcha_type: captchaType || 'unknown',
+          image_hash: imageHash,
+          prompt: prompt || null,
+          solution: solution,
+          was_correct: false, // Will be updated when we verify
+          confidence: 0.85,
+          site_domain: siteDomain || null,
+          attempt_count: 1
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('Failed to record learning:', insertError);
+      } else {
+        console.log('Learning recorded with ID:', insertedData?.id);
+      }
+    }
 
     return new Response(
       JSON.stringify({ 
