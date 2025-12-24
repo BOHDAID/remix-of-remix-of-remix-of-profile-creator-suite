@@ -402,7 +402,11 @@
         if (clickResult.success) {
           console.log('[AI Solver] Click simulated successfully via debugger API');
         } else {
-          console.log('[AI Solver] Debugger click failed, trying fallback methods...');
+          const errMsg = (clickResult.error || '').toString();
+          console.log('[AI Solver] Debugger click failed:', errMsg);
+          if (errMsg) {
+            showStatus('لم يتمكن من النقر تلقائياً (تحقق من إذن debugger للإضافة)', 'error');
+          }
           
           // Fallback: Try native click events
           const clickEvent = new MouseEvent('click', {

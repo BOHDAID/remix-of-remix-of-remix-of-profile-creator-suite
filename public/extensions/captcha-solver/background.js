@@ -96,46 +96,71 @@ async function handleScreenCapture(sender, rect) {
 // Simulate click using Chrome Debugger API (works on iframes)
 async function handleSimulateClick(sender, x, y) {
   const tabId = sender?.tab?.id;
-  if (!tabId) {
-    return { success: false, error: 'No tab ID' };
-  }
-  
+  if (!tabId) return { success: false, error: 'No tab ID' };
+
+  const target = { tabId };
+  let attachedHere = false;
+
   try {
-    // Attach debugger
-    await chrome.debugger.attach({ tabId }, '1.3');
-    
-    // Simulate mouse press
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    // Attach (may fail if already attached)
+    try {
+      await chrome.debugger.attach(target, '1.3');
+      attachedHere = true;
+    } catch (e) {
+      // If already attached, continue; otherwise surface error
+      const msg = e?.message || String(e);
+      if (!/already attached/i.test(msg)) {
+        throw e;
+      }
+    }
+
+    const px = Number(x);
+    const py = Number(y);
+
+    // Move -> press -> release (more reliable for some pages/iframes)
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: px,
+      y: py,
+      button: 'none',
+      pointerType: 'mouse',
+    });
+
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
       type: 'mousePressed',
-      x: x,
-      y: y,
+      x: px,
+      y: py,
       button: 'left',
-      clickCount: 1
+      buttons: 1,
+      clickCount: 1,
+      pointerType: 'mouse',
     });
-    
-    // Small delay
-    await new Promise(r => setTimeout(r, 50));
-    
-    // Simulate mouse release
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
       type: 'mouseReleased',
-      x: x,
-      y: y,
+      x: px,
+      y: py,
       button: 'left',
-      clickCount: 1
+      buttons: 0,
+      clickCount: 1,
+      pointerType: 'mouse',
     });
-    
-    // Detach debugger
-    await chrome.debugger.detach({ tabId });
-    
-    console.log('[Background] Simulated click at', x, y);
+
+    console.log('[Background] Simulated click at', px, py);
     return { success: true };
   } catch (error) {
     console.error('[Background] Click simulation failed:', error);
-    try {
-      await chrome.debugger.detach({ tabId });
-    } catch {}
-    return { success: false, error: error.message };
+    return { success: false, error: error?.message || String(error) };
+  } finally {
+    if (attachedHere) {
+      try {
+        await chrome.debugger.detach(target);
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 
