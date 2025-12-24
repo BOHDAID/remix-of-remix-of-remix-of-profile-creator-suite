@@ -12,7 +12,7 @@ const exec = (command, callback) => {
 let mainWindow;
 const runningProfiles = new Map();
 
-// Create fingerprint injection extension - ANTI-CAPTCHA 2025
+// Create fingerprint injection extension - STABLE STEALTH 2025
 function createFingerprintScript(fingerprint, userDataDir) {
   try {
     const extensionDir = path.join(userDataDir, 'fingerprint-extension');
@@ -20,7 +20,7 @@ function createFingerprintScript(fingerprint, userDataDir) {
     
     const manifest = {
       manifest_version: 3,
-      name: "System Shield",
+      name: "System Core",
       version: "1.0",
       content_scripts: [{
         matches: ["<all_urls>"],
@@ -32,33 +32,27 @@ function createFingerprintScript(fingerprint, userDataDir) {
     };
     fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     
-    // inject.js - ANTI-LEAK & STEALTH
+    // inject.js - STABLE & POWERFUL
     const injectScript = `
 (function() {
   'use strict';
   const fp = ${JSON.stringify(fingerprint)};
   
-  // 1. DISABLE WEBRTC LEAKS (Critical for VPN/Proxy)
-  const disableWebRTC = () => {
+  // 1. Hide Automation
+  try {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  } catch(e) {}
+
+  // 2. Disable WebRTC Leaks
+  try {
     if (window.RTCPeerConnection) {
       window.RTCPeerConnection = function() { return {}; };
       window.RTCPeerConnection.prototype.createOffer = function() { return Promise.resolve(); };
-      window.RTCPeerConnection.prototype.setLocalDescription = function() { return Promise.resolve(); };
-      window.RTCPeerConnection.prototype.addIceCandidate = function() { return Promise.resolve(); };
     }
-  };
-  disableWebRTC();
+  } catch(e) {}
 
-  // 2. HIDE AUTOMATION (Deep)
-  const hideBot = () => {
-    const proto = Navigator.prototype;
-    delete proto.webdriver;
-    Object.defineProperty(proto, 'webdriver', { get: () => undefined });
-  };
-  hideBot();
-
-  // 3. WEBGL & HARDWARE
-  const spoofHardware = () => {
+  // 3. WebGL Spoofing
+  try {
     const vendor = fp.webglVendor || 'Google Inc. (NVIDIA)';
     const renderer = fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)';
     const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -67,13 +61,13 @@ function createFingerprintScript(fingerprint, userDataDir) {
       if (param === 37446) return renderer;
       return getParameter.call(this, param);
     };
+  } catch(e) {}
+
+  // 4. Hardware & Locale
+  try {
     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fp.cpuCores || 16 });
     Object.defineProperty(navigator, 'deviceMemory', { get: () => fp.deviceMemory || 32 });
-  };
-  spoofHardware();
-
-  // 4. LOCALE SYNC
-  const syncLocale = () => {
+    
     const targetTZ = fp.timezone || 'UTC';
     const targetOffset = fp.timezoneOffset || 0;
     Date.prototype.getTimezoneOffset = function() { return targetOffset; };
@@ -83,10 +77,9 @@ function createFingerprintScript(fingerprint, userDataDir) {
       Object.defineProperty(res, 'timeZone', { get: () => targetTZ });
       return res;
     };
-  };
-  syncLocale();
+  } catch(e) {}
 
-  console.log('[Manus] Shield Active - No Leaks');
+  console.log('[Manus] Protection Active');
 })();
     `;
     fs.writeFileSync(path.join(extensionDir, 'inject.js'), injectScript);
@@ -126,8 +119,7 @@ ipcMain.handle('launch-profile', async (event, profileData) => {
     '--ignore-certificate-errors',
     `--lang=${fingerprint?.language || 'en-US'}`,
     `--accept-lang=${fingerprint?.language || 'en-US'}`,
-    '--disable-webrtc', // CRITICAL: Disable WebRTC at browser level
-    '--disable-features=WebRtcHideLocalIpsWithMdns'
+    '--disable-webrtc'
   ];
 
   if (userAgent) args.push(`--user-agent=${userAgent}`);
