@@ -85,6 +85,26 @@ export interface ContinuousCaptureOptions {
   type?: 'screen' | 'window';
 }
 
+// Extension Learning Data Types
+export interface ExtensionLearningData {
+  enabled: boolean;
+  autoSolve: boolean;
+  totalSolved: number;
+  successRate: number;
+  learningData: Record<string, {
+    success: number;
+    failed: number;
+    patterns: string[];
+  }>;
+  lastSync?: string;
+}
+
+export interface ExtensionLearningDataResult {
+  success: boolean;
+  data?: ExtensionLearningData;
+  error?: string;
+}
+
 // GitHub Manual Update Types
 export interface GitHubVerifyResult {
   success: boolean;
@@ -164,7 +184,11 @@ export interface ElectronAPI {
   startContinuousCapture: (options?: ContinuousCaptureOptions) => Promise<{ success: boolean; message: string }>;
   stopContinuousCapture: () => Promise<{ success: boolean; message: string }>;
   onScreenCaptured: (callback: (capture: ScreenCaptureData) => void) => void;
-  
+
+  // Extension Storage API (for CAPTCHA solver learning data)
+  getExtensionLearningData: () => Promise<ExtensionLearningDataResult>;
+  syncExtensionLearningData: (data: ExtensionLearningData) => Promise<{ success: boolean; error?: string }>;
+
   // Platform info
   platform: string;
   isElectron: boolean;
