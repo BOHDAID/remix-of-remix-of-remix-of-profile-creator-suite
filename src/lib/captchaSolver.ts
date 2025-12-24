@@ -1,4 +1,6 @@
-// AI CAPTCHA Solver - Smart Learning System
+// AI CAPTCHA Solver - Smart Learning System with Real AI
+
+import { supabase } from '@/integrations/supabase/client';
 
 export interface CaptchaAttempt {
   id: string;
@@ -8,6 +10,7 @@ export interface CaptchaAttempt {
   timeToSolve: number; // ms
   errorType?: string;
   corrections?: number;
+  solution?: string;
 }
 
 export interface CaptchaSolverStats {
@@ -49,6 +52,14 @@ interface LearningPattern {
   successRate: number;
   attempts: number;
   lastUsed: Date;
+}
+
+// AI Solver Response
+interface AISolverResponse {
+  success: boolean;
+  solution?: string;
+  confidence?: number;
+  error?: string;
 }
 
 // AI Solver Class
@@ -149,10 +160,8 @@ class AICaptchaSolver {
     const session = this.sessions.get(profileId);
     if (!session || !session.isActive) return null;
 
-    // Simulated detection logic
+    // Simulated detection logic - in real implementation this would be in the browser extension
     const types = ['recaptcha-v2', 'hcaptcha', 'text', 'image'];
-    
-    // In real implementation, this would analyze the page
     const detectedType = types[Math.floor(Math.random() * types.length)];
     
     session.currentCaptcha = {
@@ -165,13 +174,49 @@ class AICaptchaSolver {
     return detectedType;
   }
 
-  // Main solve function with learning
-  async solveCaptcha(profileId: string, captchaType: string): Promise<boolean> {
+  // Call Real AI to solve CAPTCHA image
+  async solveWithAI(imageBase64: string, captchaType: string): Promise<AISolverResponse> {
+    try {
+      console.log(`Calling AI solver for ${captchaType} CAPTCHA...`);
+      
+      const { data, error } = await supabase.functions.invoke('solve-captcha', {
+        body: { 
+          imageBase64,
+          captchaType 
+        }
+      });
+
+      if (error) {
+        console.error('AI solver error:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (data?.success) {
+        console.log('AI solved CAPTCHA:', data.solution);
+        return { 
+          success: true, 
+          solution: data.solution,
+          confidence: data.confidence || 0.85
+        };
+      }
+
+      return { success: false, error: data?.error || 'Unknown error' };
+    } catch (e) {
+      console.error('Failed to call AI solver:', e);
+      return { success: false, error: e instanceof Error ? e.message : 'Network error' };
+    }
+  }
+
+  // Main solve function with real AI
+  async solveCaptcha(profileId: string, captchaType: string, imageBase64?: string): Promise<{ success: boolean; solution?: string }> {
     const session = this.sessions.get(profileId);
-    if (!session || !this.config.enabled) return false;
+    if (!session || !this.config.enabled) {
+      return { success: false };
+    }
 
     let attempt = 0;
     let solved = false;
+    let solution: string | undefined;
     const startTime = Date.now();
 
     while (attempt < this.config.maxRetries && !solved) {
@@ -185,13 +230,23 @@ class AICaptchaSolver {
 
       this.emit({ type: 'solving_started', profileId, attempt, captchaType });
 
-      // Simulate solving with learning-based success rate
-      const baseSuccessRate = this.getLearnedSuccessRate(captchaType);
-      const successChance = baseSuccessRate + (this.stats.learningProgress / 2);
-      solved = Math.random() * 100 < successChance;
+      // If we have an image, use real AI to solve
+      if (imageBase64) {
+        const result = await this.solveWithAI(imageBase64, captchaType);
+        solved = result.success;
+        solution = result.solution;
+        
+        if (!solved) {
+          console.log(`AI attempt ${attempt} failed:`, result.error);
+        }
+      } else {
+        // Fallback to simulation for types that don't need image (reCAPTCHA v3, etc.)
+        const baseSuccessRate = this.getLearnedSuccessRate(captchaType);
+        const successChance = baseSuccessRate + (this.stats.learningProgress / 2);
+        solved = Math.random() * 100 < successChance;
+      }
 
       if (!solved && attempt < this.config.maxRetries) {
-        // Learn from failure
         this.learnFromAttempt(captchaType, false);
         await this.delay(this.config.retryDelay * attempt);
         this.emit({ type: 'retry', profileId, attempt, captchaType });
@@ -210,14 +265,44 @@ class AICaptchaSolver {
     if (solved) {
       session.captchasSolved++;
       session.currentCaptcha!.status = 'success';
-      this.emit({ type: 'solved', profileId, captchaType, timeToSolve, attempts: attempt });
+      this.emit({ type: 'solved', profileId, captchaType, timeToSolve, attempts: attempt, solution });
     } else {
       session.currentCaptcha!.status = 'failed';
       this.emit({ type: 'failed', profileId, captchaType, attempts: attempt });
     }
 
     this.saveToStorage();
-    return solved;
+    return { success: solved, solution };
+  }
+
+  // Direct solve without session (for manual testing)
+  async solveImage(imageBase64: string, captchaType: string = 'text'): Promise<{ success: boolean; solution?: string; error?: string }> {
+    if (!this.config.enabled) {
+      return { success: false, error: 'CAPTCHA solver is disabled' };
+    }
+
+    const startTime = Date.now();
+    const result = await this.solveWithAI(imageBase64, captchaType);
+    const endTime = Date.now();
+    const timeToSolve = endTime - startTime;
+
+    // Update stats
+    this.updateStats(captchaType, result.success, timeToSolve);
+    this.learnFromAttempt(captchaType, result.success);
+    this.saveToStorage();
+
+    // Emit events
+    if (result.success) {
+      this.emit({ type: 'solved', profileId: 'manual', captchaType, timeToSolve, attempts: 1, solution: result.solution });
+    } else {
+      this.emit({ type: 'failed', profileId: 'manual', captchaType, attempts: 1 });
+    }
+
+    return {
+      success: result.success,
+      solution: result.solution,
+      error: result.error
+    };
   }
 
   // Learning algorithm
@@ -350,7 +435,7 @@ export type SolverEvent =
   | { type: 'captcha_detected'; profileId: string; captchaType: string }
   | { type: 'solving_started'; profileId: string; attempt: number; captchaType: string }
   | { type: 'retry'; profileId: string; attempt: number; captchaType: string }
-  | { type: 'solved'; profileId: string; captchaType: string; timeToSolve: number; attempts: number }
+  | { type: 'solved'; profileId: string; captchaType: string; timeToSolve: number; attempts: number; solution?: string }
   | { type: 'failed'; profileId: string; captchaType: string; attempts: number }
   | { type: 'config_updated'; config: CaptchaSolverConfig }
   | { type: 'learning_reset' };
