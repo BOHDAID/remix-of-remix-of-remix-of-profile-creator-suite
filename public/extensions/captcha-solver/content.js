@@ -12,9 +12,10 @@
     maxRetries: 3,
     retryDelay: 1500
   };
-  
+
   let isProcessing = false;
   let solverEnabled = true;
+  let autoSolveEnabled = true;
   
   // CAPTCHA Detection Patterns
   const CAPTCHA_PATTERNS = {
@@ -83,11 +84,11 @@
   function startDetection() {
     setInterval(() => {
       if (!solverEnabled || isProcessing) return;
-      
+
       const captcha = detectCaptcha();
       if (captcha) {
         console.log('[AI Solver] CAPTCHA detected:', captcha.type);
-        
+
         // Notify background
         chrome.runtime.sendMessage({
           type: 'CAPTCHA_DETECTED',
@@ -96,22 +97,28 @@
             url: window.location.href
           }
         });
+
+        // If auto-solve is on, start immediately (so we don't rely on sender.tab)
+        if (autoSolveEnabled) {
+          solveCaptcha({ type: captcha.type });
+        }
       }
     }, SOLVER_CONFIG.checkInterval);
   }
   
-  // Listen for solve commands
+  // Listen for solve commands / state updates
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'START_SOLVING') {
       solveCaptcha(message.data);
       sendResponse({ started: true });
     }
-    
+
     if (message.type === 'TOGGLE_SOLVER') {
-      solverEnabled = message.enabled;
-      sendResponse({ enabled: solverEnabled });
+      if (typeof message.enabled === 'boolean') solverEnabled = message.enabled;
+      if (typeof message.autoSolve === 'boolean') autoSolveEnabled = message.autoSolve;
+      sendResponse({ enabled: solverEnabled, autoSolve: autoSolveEnabled });
     }
-    
+
     return true;
   });
   

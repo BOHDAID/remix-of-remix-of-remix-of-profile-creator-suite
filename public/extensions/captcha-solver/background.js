@@ -25,79 +25,118 @@ function saveState() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
     case 'CAPTCHA_DETECTED':
-      handleCaptchaDetected(message.data, sender.tab);
+      handleCaptchaDetected(message.data, sender);
       sendResponse({ success: true });
       break;
-      
+
     case 'CAPTCHA_SOLVED':
       handleCaptchaSolved(message.data);
       sendResponse({ success: true });
       break;
-      
+
     case 'GET_STATE':
       sendResponse(solverState);
       break;
-      
+
     case 'UPDATE_STATE':
       solverState = { ...solverState, ...message.data };
       saveState();
+      broadcastStateToTabs();
+      updateBadge();
       sendResponse({ success: true });
       break;
-      
+
     case 'GET_LEARNING_DATA':
       sendResponse(solverState.learningData);
       break;
   }
-  
+
   return true;
 });
 
-function handleCaptchaDetected(data, tab) {
-  console.log('CAPTCHA detected:', data.type, 'on tab:', tab.id);
-  
-  // Notify popup if open
-  chrome.runtime.sendMessage({
-    type: 'CAPTCHA_FOUND',
-    data: {
-      tabId: tab.id,
-      url: tab.url,
-      captchaType: data.type
+async function broadcastStateToTabs() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs
+        .sendMessage(tab.id, {
+          type: 'TOGGLE_SOLVER',
+          enabled: solverState.enabled,
+          autoSolve: solverState.autoSolve,
+        })
+        .catch(() => {});
     }
-  }).catch(() => {});
-  
+  } catch {
+    // ignore
+  }
+}
+
+function handleCaptchaDetected(data, sender) {
+  const tabId = sender?.tab?.id;
+  const tabUrl = sender?.tab?.url;
+
+  if (!tabId) {
+    console.warn('CAPTCHA detected but no tabId available', data);
+    return;
+  }
+
+  console.log('CAPTCHA detected:', data.type, 'on tab:', tabId);
+
+  // Notify popup if open
+  chrome.runtime
+    .sendMessage({
+      type: 'CAPTCHA_FOUND',
+      data: {
+        tabId,
+        url: tabUrl,
+        captchaType: data.type,
+      },
+    })
+    .catch(() => {});
+
   // If auto-solve is enabled, trigger solving
   if (solverState.autoSolve && solverState.enabled) {
-    chrome.tabs.sendMessage(tab.id, {
-      type: 'START_SOLVING',
-      data: data
-    }).catch(() => {});
+    chrome.tabs
+      .sendMessage(tabId, {
+        type: 'START_SOLVING',
+        data,
+      })
+      .catch(() => {});
   }
 }
 
 function handleCaptchaSolved(data) {
   solverState.totalSolved++;
-  
+
   // Update learning data
   const key = data.captchaType;
   if (!solverState.learningData[key]) {
     solverState.learningData[key] = { success: 0, failed: 0, patterns: [] };
   }
-  
+
   if (data.success) {
     solverState.learningData[key].success++;
   } else {
     solverState.learningData[key].failed++;
   }
-  
+
   // Calculate success rate
-  const total = Object.values(solverState.learningData).reduce((sum, d) => sum + d.success + d.failed, 0);
-  const success = Object.values(solverState.learningData).reduce((sum, d) => sum + d.success, 0);
+  const total = Object.values(solverState.learningData).reduce(
+    (sum, d) => sum + d.success + d.failed,
+    0
+  );
+  const success = Object.values(solverState.learningData).reduce(
+    (sum, d) => sum + d.success,
+    0
+  );
   solverState.successRate = total > 0 ? (success / total) * 100 : 0;
-  
+
   saveState();
-  
+
   console.log('CAPTCHA solved:', data.success ? 'SUCCESS' : 'FAILED');
 }
+
 
 // Badge update
 function updateBadge() {
